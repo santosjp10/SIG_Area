@@ -548,6 +548,7 @@ body{
     <div class="info-overlay" id="infoOverlay">
       <div class="row"><span class="label">LAT</span><span class="value" id="ovLat">—</span></div>
       <div class="row"><span class="label">LON</span><span class="value" id="ovLng">—</span></div>
+      <div class="row" id="ovUTMRow" style="display:none"><span class="label" id="ovUTMLbl">UTM</span><span class="value accent" id="ovUTM" style="font-size:9.5px">—</span></div>
       <div class="row"><span class="label">ZOOM</span><span class="value accent" id="ovZoom">—</span></div>
       <div class="row"><span class="label">PARC</span><span class="value accent" id="ovParcels">0</span></div>
     </div>
@@ -920,6 +921,38 @@ body{
       </select>
     </div>
 
+    <div class="section-divider">Sistema de Coordenadas</div>
+    <div class="field">
+      <label>Exibição dos vértices</label>
+      <select id="coordMode">
+        <option value="dd">Geográficas — Lat/Lon decimais</option>
+        <option value="utm">UTM — SIRGAS 2000 / WGS84</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Método de cálculo (área/perímetro)</label>
+      <select id="calcMode">
+        <option value="geodesic">Geodésico — esferóide WGS84</option>
+        <option value="utm">Planimétrico — projeção UTM</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Zona UTM</label>
+        <select id="utmZoneSel"></select>
+      </div>
+      <div class="field">
+        <label>Hemisfério</label>
+        <select id="utmHemiSel">
+          <option value="S">Sul</option>
+          <option value="N">Norte</option>
+        </select>
+      </div>
+    </div>
+    <div style="font-size:10.5px;color:var(--txt-2);line-height:1.5;margin-top:-4px;margin-bottom:10px">
+      Datum: <strong style="color:var(--acc-2)">SIRGAS 2000 / WGS84</strong> (compatíveis ao nível cartográfico no Brasil). Deixe a zona em <strong>Automática</strong> para detecção pelo centróide da primeira parcela.
+    </div>
+
     <div class="section-divider">Perigo</div>
     <button class="btn danger full" id="btnClearAll">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
@@ -946,9 +979,10 @@ body{
     <div class="help-step"><div class="help-step-num">5</div><div class="help-step-text"><strong>Subdividir:</strong> Em <strong>Ações</strong>, escolha <em>Dividir</em> (corte por linha) ou <em>Grade NxM</em> (parcelamento regular).</div></div>
     <div class="help-step"><div class="help-step-num">6</div><div class="help-step-text"><strong>Exportar:</strong> Em <strong>Mais</strong> exporte para KML, GeoJSON, CSV, DXF ou gere relatório PDF para regularização.</div></div>
     <div style="margin-top:14px;padding:12px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-md);font-size:11px;color:var(--txt-2);line-height:1.6">
-      <strong style="color:var(--acc-2)">Datum:</strong> Coordenadas em WGS84/SIRGAS 2000 (compatíveis para fins cartográficos no Brasil).<br>
-      <strong style="color:var(--acc-2)">Cálculos:</strong> Áreas geodésicas (esferóide), perímetros pela fórmula de Haversine.<br>
-      <strong style="color:var(--acc-2)">Snap topológico:</strong> Raio de ajuste de ~2 m em zoom de campo; alinha vértices a vizinhos para evitar gaps e sobreposições.<br>
+      <strong style="color:var(--acc-2)">Datum:</strong> SIRGAS 2000 / WGS84 — equivalentes para fins cartográficos no Brasil.<br>
+      <strong style="color:var(--acc-2)">Sistemas:</strong> Geográficas (Lat/Lon decimais ou GMS) e UTM (zona + hemisfério + easting/northing). Conversão automática em todas as telas.<br>
+      <strong style="color:var(--acc-2)">Cálculos:</strong> Modo <em>geodésico</em> (esferóide) ou <em>planimétrico UTM</em>. Em UTM, a área é dividida pelo fator de escala k₀² = 0,99920072 para obter dimensões terrestres reais.<br>
+      <strong style="color:var(--acc-2)">Snap topológico:</strong> Raio de ajuste de ~12 px da tela; alinha vértices a vizinhos para evitar gaps e sobreposições.<br>
       <strong style="color:var(--acc-2)">Off-line:</strong> O app salva automaticamente no navegador (localStorage).
     </div>
 
@@ -1015,6 +1049,11 @@ const state = {
   editPolyline:null,
   snapEnabled:true,
   snapHintMarker:null,
+  // Coordinate display & calc preferences
+  coordMode:'dd',          // 'dd' (decimal lat/lng) | 'utm'
+  calcMode:'geodesic',     // 'geodesic' | 'utm' (planimetric)
+  utmZone:null,            // null = auto (per project)
+  utmHemi:'S',
 };
 
 /* ============ Utility ============ */
@@ -1058,31 +1097,157 @@ function dmsToDecimal(d,m,s,h){
   if(h==='S'||h==='W') v=-v;
   return v;
 }
-function utmToLatLng(zone,e,n,hemi){
-  // SIRGAS2000/WGS84 approximation
-  const a=6378137, e2=0.00669437999014, k0=0.9996;
-  const x=e-500000;
-  const y=hemi==='S'?n-10000000:n;
-  const M=y/k0;
-  const mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
-  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
-  const phi1=mu+(3*e1/2-27*e1*e1*e1/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1*e1*e1*e1/32)*Math.sin(4*mu)+(151*e1*e1*e1/96)*Math.sin(6*mu);
-  const N1=a/Math.sqrt(1-e2*Math.sin(phi1)**2);
-  const T1=Math.tan(phi1)**2;
-  const C1=(e2/(1-e2))*Math.cos(phi1)**2;
-  const R1=a*(1-e2)/Math.pow(1-e2*Math.sin(phi1)**2,1.5);
-  const D=x/(N1*k0);
-  const lat=phi1-(N1*Math.tan(phi1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*(e2/(1-e2)))*D*D*D*D/24+(61+90*T1+298*C1+45*T1*T1-252*(e2/(1-e2))-3*C1*C1)*D*D*D*D*D*D/720);
-  const lng=(D-(1+2*T1+C1)*D*D*D/6+(5-2*C1+28*T1-3*C1*C1+8*(e2/(1-e2))+24*T1*T1)*D*D*D*D*D/120)/Math.cos(phi1);
-  const lng0=(zone-1)*6-180+3;
-  return [lat*180/Math.PI, lng0+lng*180/Math.PI];
+/* ============ UTM ⇄ Lat/Lng (SIRGAS 2000 / WGS84) ============
+   SIRGAS 2000 and WGS84 share the GRS80/WGS84 ellipsoid to sub-mm,
+   so the same projection equations apply for cartographic purposes.
+   Implementation: Snyder series (USGS), adequate for cm-level accuracy
+   within the standard UTM zone width.
+   Ellipsoid: GRS80/WGS84 → a=6378137, f=1/298.257223563
+   ============================================================ */
+const UTM_A  = 6378137;
+const UTM_F  = 1/298.257223563;
+const UTM_E2 = UTM_F*(2-UTM_F);              // first eccentricity squared
+const UTM_K0 = 0.9996;
+
+function utmZoneFromLng(lng){
+  // Standard zones — note Norway/Svalbard exceptions are not handled
+  // (irrelevant for Brazilian territory)
+  let z = Math.floor((lng+180)/6)+1;
+  if(z<1) z=1; if(z>60) z=60;
+  return z;
 }
+function hemisphereFromLat(lat){ return lat<0 ? 'S' : 'N' }
+function centralMeridian(zone){ return (zone-1)*6-180+3 }
+
+function latLngToUTM(lat, lng, forceZone){
+  const zone = forceZone || utmZoneFromLng(lng);
+  const lng0 = centralMeridian(zone);
+  const phi  = lat*Math.PI/180;
+  const lam  = (lng-lng0)*Math.PI/180;
+
+  const e2 = UTM_E2;
+  const ep2 = e2/(1-e2);
+  const N = UTM_A / Math.sqrt(1 - e2*Math.sin(phi)**2);
+  const T = Math.tan(phi)**2;
+  const C = ep2*Math.cos(phi)**2;
+  const A = Math.cos(phi)*lam;
+
+  const M = UTM_A*(
+    (1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256)*phi
+    - (3*e2/8 + 3*e2*e2/32 + 45*e2*e2*e2/1024)*Math.sin(2*phi)
+    + (15*e2*e2/256 + 45*e2*e2*e2/1024)*Math.sin(4*phi)
+    - (35*e2*e2*e2/3072)*Math.sin(6*phi)
+  );
+
+  const easting = UTM_K0*N*( A + (1-T+C)*A**3/6 + (5-18*T+T*T+72*C-58*ep2)*A**5/120 ) + 500000;
+  let northing  = UTM_K0*( M + N*Math.tan(phi)*( A*A/2 + (5-T+9*C+4*C*C)*A**4/24 + (61-58*T+T*T+600*C-330*ep2)*A**6/720 ) );
+
+  const hemi = hemisphereFromLat(lat);
+  if(hemi==='S') northing += 10000000;
+
+  return { zone, hemi, easting, northing };
+}
+
+function utmToLatLng(zone, easting, northing, hemi){
+  const a=UTM_A, e2=UTM_E2, k0=UTM_K0;
+  const x = easting - 500000;
+  const y = hemi==='S' ? northing - 10000000 : northing;
+  const M = y/k0;
+  const e1 = (1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const mu = M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+  const phi1 = mu
+    + (3*e1/2 - 27*e1**3/32)*Math.sin(2*mu)
+    + (21*e1*e1/16 - 55*e1**4/32)*Math.sin(4*mu)
+    + (151*e1**3/96)*Math.sin(6*mu)
+    + (1097*e1**4/512)*Math.sin(8*mu);
+  const N1 = a/Math.sqrt(1-e2*Math.sin(phi1)**2);
+  const T1 = Math.tan(phi1)**2;
+  const C1 = (e2/(1-e2))*Math.cos(phi1)**2;
+  const R1 = a*(1-e2)/Math.pow(1-e2*Math.sin(phi1)**2, 1.5);
+  const D = x/(N1*k0);
+  const lat = phi1
+    - (N1*Math.tan(phi1)/R1)*( D*D/2
+      - (5+3*T1+10*C1-4*C1*C1-9*(e2/(1-e2)))*D**4/24
+      + (61+90*T1+298*C1+45*T1*T1-252*(e2/(1-e2))-3*C1*C1)*D**6/720 );
+  const lng = ( D
+      - (1+2*T1+C1)*D**3/6
+      + (5-2*C1+28*T1-3*C1*C1+8*(e2/(1-e2))+24*T1*T1)*D**5/120
+    )/Math.cos(phi1);
+  const lng0 = centralMeridian(zone);
+  return [ lat*180/Math.PI, lng0 + lng*180/Math.PI ];
+}
+
+// Helper: format UTM string for display
+function fmtUTM(lat, lng, forceZone){
+  const u = latLngToUTM(lat, lng, forceZone);
+  return {
+    zone: u.zone,
+    hemi: u.hemi,
+    e: u.easting,
+    n: u.northing,
+    eStr: u.easting.toFixed(2),
+    nStr: u.northing.toFixed(2),
+    label: `${u.zone}${u.hemi} ${u.easting.toFixed(2)} E, ${u.northing.toFixed(2)} N`
+  };
+}
+
+// Determine the dominant zone for the current project (most-used zone)
+function getProjectZone(){
+  // Manual override has priority
+  if(state.utmZone){ return { zone: state.utmZone, hemi: state.utmHemi || 'S' } }
+  // Otherwise pick zone of first parcel's centroid, or map center
+  if(state.parcels.length){
+    const c = calcCentroid(state.parcels[0].coords);
+    return { zone: utmZoneFromLng(c[1]), hemi: hemisphereFromLat(c[0]) };
+  }
+  const c = state.map ? state.map.getCenter() : { lat:DEFAULT_CENTER[0], lng:DEFAULT_CENTER[1] };
+  return { zone: utmZoneFromLng(c.lng), hemi: hemisphereFromLat(c.lat) };
+}
+
 
 /* ============ Geometry calcs (via turf) ============ */
 function calcArea(coords){
   if(coords.length<3) return 0;
   const ring=coords.map(c=>[c[1],c[0]]); ring.push(ring[0]);
   try{return turf.area(turf.polygon([ring]))}catch(e){return 0}
+}
+
+/* ============ Planimetric (UTM-projected) calcs ============
+   These project the polygon to UTM coordinates and compute
+   area/perimeter on the plane — closer to what topographic
+   surveyors measure. The default project zone is used so the
+   numbers stay consistent across edits. For polygons spanning
+   more than one zone the geodesic version above is more accurate.
+*/
+function calcAreaUTM(coords){
+  if(coords.length<3) return 0;
+  const { zone } = getProjectZone();
+  // Use shoelace formula on UTM coords
+  const pts = coords.map(c => {
+    const u = latLngToUTM(c[0], c[1], zone);
+    return [u.easting, u.northing];
+  });
+  let s = 0;
+  for(let i=0;i<pts.length;i++){
+    const a = pts[i], b = pts[(i+1)%pts.length];
+    s += (a[0]*b[1]) - (b[0]*a[1]);
+  }
+  // Correct for UTM scale factor (k0=0.9996 → divide by k0² to get terrain area)
+  return Math.abs(s/2) / (UTM_K0*UTM_K0);
+}
+function calcPerimeterUTM(coords){
+  if(coords.length<2) return 0;
+  const { zone } = getProjectZone();
+  const pts = coords.map(c => {
+    const u = latLngToUTM(c[0], c[1], zone);
+    return [u.easting, u.northing];
+  });
+  let total = 0;
+  for(let i=0;i<pts.length;i++){
+    const a = pts[i], b = pts[(i+1)%pts.length];
+    total += Math.hypot(b[0]-a[0], b[1]-a[1]);
+  }
+  return total / UTM_K0;
 }
 function calcPerimeter(coords){
   if(coords.length<2) return 0;
@@ -1100,6 +1265,14 @@ function calcCentroid(coords){
     const c=turf.centroid(turf.polygon([ring])).geometry.coordinates;
     return [c[1],c[0]];
   }catch(e){return coords[0]}
+}
+
+/* ============ Active-mode wrappers ============ */
+function calcAreaActive(coords){
+  return state.calcMode === 'utm' ? calcAreaUTM(coords) : calcArea(coords);
+}
+function calcPerimeterActive(coords){
+  return state.calcMode === 'utm' ? calcPerimeterUTM(coords) : calcPerimeter(coords);
 }
 
 /* ============ Map setup ============ */
@@ -1144,6 +1317,14 @@ function updateMouseInfo(e){
   if(e && e.latlng){
     $('#ovLat').textContent=fmtCoord(e.latlng.lat);
     $('#ovLng').textContent=fmtCoord(e.latlng.lng);
+    if(state.coordMode === 'utm'){
+      const u = fmtUTM(e.latlng.lat, e.latlng.lng);
+      $('#ovUTM').textContent = `${u.zone}${u.hemi}  ${Math.round(u.e)} E  ${Math.round(u.n)} N`;
+      $('#ovUTMLbl').textContent = 'UTM';
+      $('#ovUTMRow').style.display = 'flex';
+    } else {
+      $('#ovUTMRow').style.display = 'none';
+    }
   }
   $('#ovZoom').textContent=state.map.getZoom();
   $('#ovParcels').textContent=state.parcels.length;
@@ -1250,12 +1431,13 @@ function renderOneParcel(p){
     smoothFactor:0.5,
   }).addTo(state.map);
 
-  const area=calcArea(p.coords);
-  const perim=calcPerimeter(p.coords);
+  const area=calcAreaActive(p.coords);
+  const perim=calcPerimeterActive(p.coords);
   const af=fmtArea(area);
+  const modeLbl = state.calcMode === 'utm' ? 'UTM' : 'Geod';
   poly.bindPopup(`
     <div class="popup-title">${escapeHTML(p.name)}</div>
-    <div class="popup-row">Área: ${af.val} ${af.unit}</div>
+    <div class="popup-row">Área (${modeLbl}): ${af.val} ${af.unit}</div>
     <div class="popup-row">Perímetro: ${fmtDistance(perim)}</div>
     <div class="popup-row">Vértices: ${p.coords.length}</div>
   `);
@@ -1275,7 +1457,14 @@ function renderOneParcel(p){
   if(isSel){
     p.coords.forEach((c,i)=>{
       const m=L.circleMarker(c,{radius:5,color:p.color,weight:2,fillColor:'#0a0d0c',fillOpacity:1}).addTo(state.map);
-      m.bindTooltip('V'+(i+1)+'<br>'+fmtCoord(c[0],6)+'<br>'+fmtCoord(c[1],6),{direction:'top'});
+      let tipText;
+      if(state.coordMode === 'utm'){
+        const u = latLngToUTM(c[0], c[1], getProjectZone().zone);
+        tipText = `V${i+1}<br>${u.easting.toFixed(2)} E<br>${u.northing.toFixed(2)} N<br><small style="opacity:.7">${u.zone}${u.hemi}</small>`;
+      } else {
+        tipText = 'V'+(i+1)+'<br>'+fmtCoord(c[0],6)+'<br>'+fmtCoord(c[1],6);
+      }
+      m.bindTooltip(tipText,{direction:'top'});
       vertexMarkers.push(m);
     });
   }
@@ -1296,7 +1485,7 @@ function renderParcelList(){
   $('#parcelsCount').textContent=`${state.parcels.length} parcela${state.parcels.length!==1?'s':''} cadastrada${state.parcels.length!==1?'s':''}`;
 
   let totalArea=0, totalPerim=0;
-  state.parcels.forEach(p=>{totalArea+=calcArea(p.coords);totalPerim+=calcPerimeter(p.coords)});
+  state.parcels.forEach(p=>{totalArea+=calcAreaActive(p.coords);totalPerim+=calcPerimeterActive(p.coords)});
   const af=fmtArea(totalArea);
   $('#totalArea').textContent=af.val;
   $('#totalAreaUnit').textContent=af.unit;
@@ -1308,8 +1497,8 @@ function renderParcelList(){
   }
 
   state.parcels.forEach(p=>{
-    const area=calcArea(p.coords);
-    const perim=calcPerimeter(p.coords);
+    const area=calcAreaActive(p.coords);
+    const perim=calcPerimeterActive(p.coords);
     const af=fmtArea(area);
     const card=document.createElement('div');
     card.className='parcel-card';
@@ -1376,15 +1565,20 @@ function populateDetails(id){
   if(!p)return;
   $('#detailsTitle').textContent=p.name;
   $('#detailsCode').textContent='ID '+p.id.slice(0,10).toUpperCase();
-  const area=calcArea(p.coords);
-  const perim=calcPerimeter(p.coords);
+  const area=calcAreaActive(p.coords);
+  const perim=calcPerimeterActive(p.coords);
   const af=fmtArea(area);
   $('#dtArea').textContent=af.val;
   $('#dtAreaUnit').textContent=af.unit;
   $('#dtPerim').textContent=perim.toFixed(2);
   $('#dtVertices').textContent=p.coords.length;
   const c=calcCentroid(p.coords);
-  $('#dtCentroid').textContent=fmtCoord(c[0],5)+'\n'+fmtCoord(c[1],5);
+  if(state.coordMode === 'utm'){
+    const u = latLngToUTM(c[0], c[1], getProjectZone().zone);
+    $('#dtCentroid').textContent = `${u.zone}${u.hemi}\n${u.easting.toFixed(1)} E\n${u.northing.toFixed(1)} N`;
+  } else {
+    $('#dtCentroid').textContent=fmtCoord(c[0],5)+'\n'+fmtCoord(c[1],5);
+  }
   $('#editName').value=p.name;
   $('#editDesc').value=p.desc||'';
   renderColorGrid(p.color);
@@ -1410,13 +1604,32 @@ function renderColorGrid(selected){
 function renderCoordList(p){
   const list=$('#coordList');list.innerHTML='';
   $('#vCount').textContent=p.coords.length;
+
+  // Update header label
+  const header = document.querySelector('#tab-vertices > div:first-child > span:first-child');
+  if(header){
+    header.textContent = state.coordMode === 'utm'
+      ? 'VÉRTICES UTM (E, N · '+getProjectZone().zone+getProjectZone().hemi+')'
+      : 'VÉRTICES (LAT, LON)';
+  }
+
   p.coords.forEach((c,i)=>{
     const row=document.createElement('div');
     row.className='coord-row';
+    let cell1, cell2;
+    if(state.coordMode === 'utm'){
+      const { zone } = getProjectZone();
+      const u = latLngToUTM(c[0], c[1], zone);
+      cell1 = u.easting.toFixed(2);
+      cell2 = u.northing.toFixed(2);
+    } else {
+      cell1 = fmtCoord(c[0],6);
+      cell2 = fmtCoord(c[1],6);
+    }
     row.innerHTML=`
       <span class="idx">V${i+1}</span>
-      <span class="lat">${fmtCoord(c[0],6)}</span>
-      <span class="lng">${fmtCoord(c[1],6)}</span>
+      <span class="lat">${cell1}</span>
+      <span class="lng">${cell2}</span>
       <button class="del" data-i="${i}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
     `;
     list.appendChild(row);
@@ -1510,14 +1723,35 @@ function download(filename,content,mime='text/plain'){
   setTimeout(()=>URL.revokeObjectURL(url),500);
 }
 function parcelsToGeoJSON(parcels){
+  const { zone, hemi } = getProjectZone();
   return {
     type:'FeatureCollection',
-    features:parcels.map(p=>({
-      type:'Feature',
-      properties:{name:p.name,desc:p.desc,color:p.color,id:p.id,
-        area_m2:calcArea(p.coords),perimeter_m:calcPerimeter(p.coords)},
-      geometry:{type:'Polygon',coordinates:[[...p.coords.map(c=>[c[1],c[0]]),[p.coords[0][1],p.coords[0][0]]]]}
-    }))
+    name: state.projectName,
+    crs: { type:'name', properties:{ name:'urn:ogc:def:crs:EPSG::4326' } },
+    metadata: {
+      datum: 'SIRGAS 2000 / WGS84',
+      utm_zone: zone,
+      utm_hemisphere: hemi,
+      coord_mode: state.coordMode,
+      calc_mode: state.calcMode,
+      exported_at: new Date().toISOString(),
+    },
+    features:parcels.map(p=>{
+      const cen = calcCentroid(p.coords);
+      const cenUTM = latLngToUTM(cen[0], cen[1], zone);
+      return {
+        type:'Feature',
+        properties:{
+          name:p.name, desc:p.desc, color:p.color, id:p.id,
+          area_m2:calcAreaActive(p.coords),
+          perimeter_m:calcPerimeterActive(p.coords),
+          centroid_lat:cen[0], centroid_lng:cen[1],
+          centroid_utm_e:cenUTM.easting, centroid_utm_n:cenUTM.northing,
+          utm_zone:zone, utm_hemisphere:hemi,
+        },
+        geometry:{type:'Polygon',coordinates:[[...p.coords.map(c=>[c[1],c[0]]),[p.coords[0][1],p.coords[0][0]]]]}
+      };
+    })
   };
 }
 function parcelsToKML(parcels){
@@ -1526,8 +1760,8 @@ function parcelsToKML(parcels){
     const color=p.color.replace('#','');
     const r=color.substring(0,2),g=color.substring(2,4),b=color.substring(4,6);
     const kmlColor='80'+b+g+r;
-    const area=calcArea(p.coords).toFixed(2);
-    const perim=calcPerimeter(p.coords).toFixed(2);
+    const area=calcAreaActive(p.coords).toFixed(2);
+    const perim=calcPerimeterActive(p.coords).toFixed(2);
     kml+=`\n<Placemark><name>${escapeHTML(p.name)}</name>`;
     kml+=`<description><![CDATA[${escapeHTML(p.desc||'')}\nÁrea: ${area} m²\nPerímetro: ${perim} m]]></description>`;
     kml+=`<Style><LineStyle><color>ff${b}${g}${r}</color><width>2</width></LineStyle><PolyStyle><color>${kmlColor}</color></PolyStyle></Style>`;
@@ -1540,27 +1774,57 @@ function parcelsToKML(parcels){
   return kml;
 }
 function parcelsToCSV(parcels){
-  let csv='parcela,vertice,latitude,longitude,area_m2,perimetro_m\n';
+  // CSV reflects the active coord display mode
+  const useUTM = state.coordMode === 'utm';
+  const { zone, hemi } = getProjectZone();
+  let csv;
+  if(useUTM){
+    csv = `parcela,vertice,easting_m,northing_m,zona_utm,hemisferio,area_m2,perimetro_m\n`;
+  } else {
+    csv = 'parcela,vertice,latitude,longitude,area_m2,perimetro_m\n';
+  }
   parcels.forEach(p=>{
-    const area=calcArea(p.coords).toFixed(2);
-    const perim=calcPerimeter(p.coords).toFixed(2);
+    const area=calcAreaActive(p.coords).toFixed(2);
+    const perim=calcPerimeterActive(p.coords).toFixed(2);
     p.coords.forEach((c,i)=>{
-      csv+=`"${p.name}",${i+1},${c[0].toFixed(8)},${c[1].toFixed(8)},${area},${perim}\n`;
+      if(useUTM){
+        const u = latLngToUTM(c[0], c[1], zone);
+        csv += `"${p.name}",${i+1},${u.easting.toFixed(3)},${u.northing.toFixed(3)},${zone},${hemi},${area},${perim}\n`;
+      } else {
+        csv+=`"${p.name}",${i+1},${c[0].toFixed(8)},${c[1].toFixed(8)},${area},${perim}\n`;
+      }
     });
   });
   return csv;
 }
 function parcelsToDXF(parcels){
-  // Minimal AutoCAD DXF R12
-  let dxf='0\nSECTION\n2\nENTITIES\n';
+  // DXF is inherently planimetric — use UTM by default (or lat/lng if user has chosen geographic).
+  // UTM produces real CAD-usable drawings in meters, which is what topographers expect.
+  const useUTM = state.coordMode === 'utm' || state.calcMode === 'utm';
+  const { zone, hemi } = getProjectZone();
+  let dxf='0\nSECTION\n2\nHEADER\n';
+  dxf+='9\n$INSUNITS\n70\n6\n';   // meters when UTM
+  dxf+='0\nENDSEC\n0\nSECTION\n2\nENTITIES\n';
   parcels.forEach(p=>{
     dxf+='0\nLWPOLYLINE\n8\n'+(p.name||'PARCELA').replace(/\s+/g,'_')+'\n90\n'+p.coords.length+'\n70\n1\n';
     p.coords.forEach(c=>{
-      dxf+='10\n'+c[1].toFixed(8)+'\n20\n'+c[0].toFixed(8)+'\n';
+      if(useUTM){
+        const u = latLngToUTM(c[0], c[1], zone);
+        dxf+='10\n'+u.easting.toFixed(3)+'\n20\n'+u.northing.toFixed(3)+'\n';
+      } else {
+        dxf+='10\n'+c[1].toFixed(8)+'\n20\n'+c[0].toFixed(8)+'\n';
+      }
     });
-    // Add text label at centroid
+    // Text label at centroid
     const cen=calcCentroid(p.coords);
-    dxf+='0\nTEXT\n8\nLABELS\n10\n'+cen[1].toFixed(8)+'\n20\n'+cen[0].toFixed(8)+'\n40\n0.0001\n1\n'+(p.name||'').replace(/[\n\r]/g,' ')+'\n';
+    let cx, cy, height;
+    if(useUTM){
+      const u = latLngToUTM(cen[0], cen[1], zone);
+      cx = u.easting.toFixed(3); cy = u.northing.toFixed(3); height = '2.5';
+    } else {
+      cx = cen[1].toFixed(8); cy = cen[0].toFixed(8); height = '0.0001';
+    }
+    dxf+='0\nTEXT\n8\nLABELS\n10\n'+cx+'\n20\n'+cy+'\n40\n'+height+'\n1\n'+(p.name||'').replace(/[\n\r]/g,' ')+'\n';
   });
   dxf+='0\nENDSEC\n0\nEOF\n';
   return dxf;
@@ -1656,19 +1920,49 @@ function importKML(text){
   else toast('Nenhum polígono no KML','error');
 }
 function importCSV(text){
-  // expect columns: name,lat,lng OR parcela,vertice,latitude,longitude
+  // expect columns: name,lat,lng OR easting,northing[,zone,hemi]
   const lines=text.trim().split(/\r?\n/);
-  const header=lines[0].toLowerCase().split(/[,;\t]/);
+  const header=lines[0].toLowerCase().split(/[,;\t]/).map(h=>h.replace(/^"|"$/g,'').trim());
   const idxName=header.findIndex(h=>/^(parcela|nome|name)$/i.test(h));
   const idxLat=header.findIndex(h=>/^lat/.test(h));
   const idxLng=header.findIndex(h=>/^(lng|lon)/.test(h));
-  if(idxLat<0||idxLng<0){toast('CSV deve conter colunas lat e lng','error');return}
+  const idxE=header.findIndex(h=>/^(easting|este|e_m|x|utm_e)/i.test(h));
+  const idxN=header.findIndex(h=>/^(northing|norte|n_m|y|utm_n)/i.test(h));
+  const idxZone=header.findIndex(h=>/^(zona|zone)/i.test(h));
+  const idxHemi=header.findIndex(h=>/^(hemi|hemisferio)/i.test(h));
+
+  const isUTM = idxE>=0 && idxN>=0 && idxLat<0;
+  if(!isUTM && (idxLat<0||idxLng<0)){
+    toast('CSV deve conter colunas lat/lng ou easting/northing','error');return;
+  }
+
+  // Determine zone for UTM imports
+  let defaultZone = null, defaultHemi = 'S';
+  if(isUTM){
+    if(idxZone < 0){
+      const pz = getProjectZone();
+      defaultZone = pz.zone;
+      defaultHemi = pz.hemi;
+      toast(`CSV UTM importado com zona padrão ${defaultZone}${defaultHemi}`,'info',3000);
+    }
+  }
+
   const groups=new Map();
   for(let i=1;i<lines.length;i++){
-    const row=lines[i].split(/[,;\t]/);
+    const row=lines[i].split(/[,;\t]/).map(c=>c.replace(/^"|"$/g,'').trim());
     const nm=idxName>=0?(row[idxName]||'').replace(/^"|"$/g,''):'Importada';
-    const lat=parseFloat(row[idxLat]);
-    const lng=parseFloat(row[idxLng]);
+    let lat, lng;
+    if(isUTM){
+      const e=parseFloat(row[idxE]);
+      const n=parseFloat(row[idxN]);
+      if(isNaN(e)||isNaN(n))continue;
+      const z = idxZone>=0 ? parseInt(row[idxZone]) : defaultZone;
+      const h = idxHemi>=0 ? (row[idxHemi].toUpperCase().startsWith('N')?'N':'S') : defaultHemi;
+      [lat,lng] = utmToLatLng(z, e, n, h);
+    } else {
+      lat=parseFloat(row[idxLat]);
+      lng=parseFloat(row[idxLng]);
+    }
     if(isNaN(lat)||isNaN(lng))continue;
     if(!groups.has(nm))groups.set(nm,[]);
     groups.get(nm).push([lat,lng]);
@@ -1710,6 +2004,10 @@ function saveProject(){
       name:state.projectName,
       parcels:state.parcels,
       areaUnit:state.areaUnit,
+      coordMode:state.coordMode,
+      calcMode:state.calcMode,
+      utmZone:state.utmZone,
+      utmHemi:state.utmHemi,
       savedAt:Date.now(),
     };
     localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
@@ -1723,8 +2021,16 @@ function loadProject(){
     state.projectName=data.name||'Projeto sem título';
     state.parcels=data.parcels||[];
     state.areaUnit=data.areaUnit||'auto';
+    state.coordMode=data.coordMode||'dd';
+    state.calcMode=data.calcMode||'geodesic';
+    state.utmZone=data.utmZone||null;
+    state.utmHemi=data.utmHemi||'S';
     $('#projectName').value=state.projectName;
     $('#areaUnit').value=state.areaUnit;
+    if($('#coordMode')) $('#coordMode').value = state.coordMode;
+    if($('#calcMode')) $('#calcMode').value = state.calcMode;
+    if($('#utmZoneSel')) $('#utmZoneSel').value = state.utmZone || '';
+    if($('#utmHemiSel')) $('#utmHemiSel').value = state.utmHemi;
     renderParcelLayers();
     renderParcelList();
     if(state.parcels.length) fitAllParcels();
@@ -1735,8 +2041,12 @@ function exportProjectFile(){
     name:state.projectName,
     parcels:state.parcels,
     areaUnit:state.areaUnit,
+    coordMode:state.coordMode,
+    calcMode:state.calcMode,
+    utmZone:state.utmZone,
+    utmHemi:state.utmHemi,
     exportedAt:new Date().toISOString(),
-    version:1,
+    version:2,
   };
   download((state.projectName||'projeto')+'.json',JSON.stringify(data,null,2),'application/json');
 }
@@ -2233,6 +2543,9 @@ async function generatePDF(specificParcel=null){
   const { jsPDF }=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
   const list=specificParcel?[specificParcel]:state.parcels;
+  const useUTM = state.coordMode === 'utm';
+  const { zone, hemi } = getProjectZone();
+  const calcLbl = state.calcMode === 'utm' ? 'Planimétrico (UTM)' : 'Geodésico (WGS84)';
 
   // Header
   doc.setFillColor(15,20,17);
@@ -2245,7 +2558,10 @@ async function generatePDF(specificParcel=null){
   doc.text('RELATÓRIO DE LEVANTAMENTO TERRITORIAL',14,20);
   doc.setFontSize(7);
   doc.text(new Date().toLocaleString('pt-BR'),196,14,{align:'right'});
-  doc.text('Datum: WGS84 / SIRGAS 2000',196,20,{align:'right'});
+  doc.text('Datum: SIRGAS 2000 / WGS84',196,20,{align:'right'});
+  if(useUTM){
+    doc.text(`Projeção: UTM Zona ${zone}${hemi}`,196,24,{align:'right'});
+  }
 
   doc.setTextColor(0,0,0);
   doc.setFontSize(13);doc.setFont('helvetica','bold');
@@ -2254,11 +2570,13 @@ async function generatePDF(specificParcel=null){
   let y=46;
   doc.setFontSize(9);doc.setFont('helvetica','normal');
   let totalArea=0,totalPerim=0;
-  list.forEach(p=>{totalArea+=calcArea(p.coords);totalPerim+=calcPerimeter(p.coords)});
+  list.forEach(p=>{totalArea+=calcAreaActive(p.coords);totalPerim+=calcPerimeterActive(p.coords)});
   const af=fmtArea(totalArea);
   doc.text(`Total: ${list.length} parcela(s)`,14,y);y+=5;
   doc.text(`Área total: ${af.val} ${af.unit}`,14,y);y+=5;
-  doc.text(`Perímetro total: ${totalPerim.toFixed(2)} m`,14,y);y+=8;
+  doc.text(`Perímetro total: ${totalPerim.toFixed(2)} m`,14,y);y+=5;
+  doc.text(`Método de cálculo: ${calcLbl}`,14,y);y+=5;
+  doc.text(`Sistema de coordenadas: ${useUTM ? `UTM zona ${zone}${hemi} · SIRGAS 2000` : 'Geográficas decimais · SIRGAS 2000'}`,14,y);y+=8;
 
   list.forEach((p,idx)=>{
     if(y>250){doc.addPage();y=20}
@@ -2270,15 +2588,20 @@ async function generatePDF(specificParcel=null){
     doc.text(`${idx+1}. ${p.name}`,16,y+5);
     y+=10;
 
-    const area=calcArea(p.coords);
-    const perim=calcPerimeter(p.coords);
+    const area=calcAreaActive(p.coords);
+    const perim=calcPerimeterActive(p.coords);
     const aaf=fmtArea(area);
     const cen=calcCentroid(p.coords);
+    const cenUTM = latLngToUTM(cen[0], cen[1], zone);
 
     doc.setFontSize(9);doc.setFont('helvetica','normal');
     doc.text(`Identificador: ${p.id.slice(0,10).toUpperCase()}`,16,y);y+=4;
     doc.text(`Área: ${aaf.val} ${aaf.unit}    Perímetro: ${perim.toFixed(2)} m    Vértices: ${p.coords.length}`,16,y);y+=4;
-    doc.text(`Centróide: ${fmtCoord(cen[0])}, ${fmtCoord(cen[1])}`,16,y);y+=4;
+    if(useUTM){
+      doc.text(`Centróide UTM: ${cenUTM.easting.toFixed(2)} E   ${cenUTM.northing.toFixed(2)} N   (${zone}${hemi})`,16,y);y+=4;
+    } else {
+      doc.text(`Centróide: ${fmtCoord(cen[0])}, ${fmtCoord(cen[1])}`,16,y);y+=4;
+    }
     if(p.desc){
       const lines=doc.splitTextToSize('Descrição: '+p.desc,180);
       doc.text(lines,16,y);y+=lines.length*4;
@@ -2290,18 +2613,37 @@ async function generatePDF(specificParcel=null){
     doc.setFillColor(220,224,221);
     doc.rect(14,y,182,5,'F');
     doc.text('Vértice',18,y+3.5);
-    doc.text('Latitude',55,y+3.5);
-    doc.text('Longitude',105,y+3.5);
+    if(useUTM){
+      doc.text(`Easting (m)`,55,y+3.5);
+      doc.text(`Northing (m)`,105,y+3.5);
+    } else {
+      doc.text('Latitude',55,y+3.5);
+      doc.text('Longitude',105,y+3.5);
+    }
     doc.text('Distância p/ próximo',150,y+3.5);
     y+=5;
     doc.setFont('helvetica','normal');
     p.coords.forEach((c,i)=>{
       if(y>285){doc.addPage();y=20}
       const next=p.coords[(i+1)%p.coords.length];
-      const d=turf.distance(turf.point([c[1],c[0]]),turf.point([next[1],next[0]]),{units:'meters'});
+      // Distance — use planimetric UTM if calc mode is UTM, else geodesic
+      let d;
+      if(state.calcMode === 'utm'){
+        const u1 = latLngToUTM(c[0],c[1],zone);
+        const u2 = latLngToUTM(next[0],next[1],zone);
+        d = Math.hypot(u2.easting-u1.easting, u2.northing-u1.northing) / UTM_K0;
+      } else {
+        d = turf.distance(turf.point([c[1],c[0]]),turf.point([next[1],next[0]]),{units:'meters'});
+      }
       doc.text('V'+(i+1),18,y+3.5);
-      doc.text(fmtCoord(c[0],7),55,y+3.5);
-      doc.text(fmtCoord(c[1],7),105,y+3.5);
+      if(useUTM){
+        const u = latLngToUTM(c[0], c[1], zone);
+        doc.text(u.easting.toFixed(3),55,y+3.5);
+        doc.text(u.northing.toFixed(3),105,y+3.5);
+      } else {
+        doc.text(fmtCoord(c[0],7),55,y+3.5);
+        doc.text(fmtCoord(c[1],7),105,y+3.5);
+      }
       doc.text(d.toFixed(2)+' m',150,y+3.5);
       y+=4.5;
     });
@@ -2340,7 +2682,14 @@ function wire(){
   $('#fabFinish').addEventListener('click',finishDraw);
   $('#fabUndo').addEventListener('click',undoVertex);
   $('#fabGPS').addEventListener('click',addGPSVertex);
-  $('#fabManual').addEventListener('click',()=>openSheet('sheetManual'));
+  $('#fabManual').addEventListener('click',()=>{
+    // Pre-select format based on current coord mode
+    if(state.coordMode === 'utm'){
+      $('#coordFormat').value = 'utm';
+      $('#coordFormat').dispatchEvent(new Event('change'));
+    }
+    openSheet('sheetManual');
+  });
   $('#fabParcels').addEventListener('click',()=>openSheet('sheetParcels'));
   $('#fabLocate').addEventListener('click',locate);
   $('#fabMore').addEventListener('click',()=>openSheet('sheetMore'));
@@ -2369,6 +2718,12 @@ function wire(){
     $('#formatDD').style.display=v==='dd'?'block':'none';
     $('#formatDMS').style.display=v==='dms'?'block':'none';
     $('#formatUTM').style.display=v==='utm'?'block':'none';
+    if(v==='utm'){
+      // Auto-fill project zone if empty
+      const pz = getProjectZone();
+      if(!$('#utmZone').value) $('#utmZone').value = pz.zone;
+      if(!$('#utmHemi').value) $('#utmHemi').value = pz.hemi;
+    }
   });
 
   $('#btnAddManualPoint').addEventListener('click',()=>{
@@ -2437,6 +2792,42 @@ function wire(){
   // Project
   $('#projectName').addEventListener('input',e=>{state.projectName=e.target.value;saveProject()});
   $('#areaUnit').addEventListener('change',e=>{state.areaUnit=e.target.value;renderParcelLayers();renderParcelList();if(state.selectedId)populateDetails(state.selectedId);saveProject()});
+
+  // Populate UTM zone selector (1..60 + Auto)
+  const zoneSel = $('#utmZoneSel');
+  zoneSel.innerHTML = '<option value="">Automática (centróide)</option>';
+  for(let z=1; z<=60; z++){
+    const o = document.createElement('option');
+    o.value = z; o.textContent = `Zona ${z}`;
+    zoneSel.appendChild(o);
+  }
+
+  function refreshCoordUI(){
+    renderParcelLayers();
+    renderParcelList();
+    if(state.selectedId) populateDetails(state.selectedId);
+    updateMouseInfo({ latlng: state.map.getCenter() });
+    saveProject();
+  }
+
+  $('#coordMode').addEventListener('change',e=>{
+    state.coordMode = e.target.value;
+    refreshCoordUI();
+    toast(state.coordMode==='utm' ? 'Modo UTM ativo' : 'Modo Lat/Lng ativo','info',1600);
+  });
+  $('#calcMode').addEventListener('change',e=>{
+    state.calcMode = e.target.value;
+    refreshCoordUI();
+    toast(state.calcMode==='utm' ? 'Cálculo planimétrico (UTM)' : 'Cálculo geodésico','info',1600);
+  });
+  $('#utmZoneSel').addEventListener('change',e=>{
+    state.utmZone = e.target.value ? parseInt(e.target.value) : null;
+    refreshCoordUI();
+  });
+  $('#utmHemiSel').addEventListener('change',e=>{
+    state.utmHemi = e.target.value;
+    refreshCoordUI();
+  });
   $('#btnNewProject').addEventListener('click',()=>{
     if(state.parcels.length && !confirm('Iniciar novo projeto? Os dados atuais permanecem salvos se você exportar.'))return;
     state.parcels=[];state.selectedId=null;state.projectName='Projeto sem título';
@@ -2455,8 +2846,16 @@ function wire(){
       state.projectName=data.name||'Importado';
       state.parcels=data.parcels||[];
       state.areaUnit=data.areaUnit||'auto';
+      state.coordMode=data.coordMode||'dd';
+      state.calcMode=data.calcMode||'geodesic';
+      state.utmZone=data.utmZone||null;
+      state.utmHemi=data.utmHemi||'S';
       $('#projectName').value=state.projectName;
       $('#areaUnit').value=state.areaUnit;
+      $('#coordMode').value=state.coordMode;
+      $('#calcMode').value=state.calcMode;
+      $('#utmZoneSel').value=state.utmZone||'';
+      $('#utmHemiSel').value=state.utmHemi;
       renderParcelLayers();renderParcelList();
       saveProject();fitAllParcels();
       toast('Projeto carregado','success');
