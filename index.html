@@ -1,0 +1,2508 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
+<meta name="theme-color" content="#0f1411" />
+<title>GeoParcel · Levantamento e Parcelamento Territorial</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg-0:#0a0d0c;
+  --bg-1:#0f1411;
+  --bg-2:#161c19;
+  --bg-3:#1d2521;
+  --line:#2a342e;
+  --line-2:#3a4740;
+  --txt-0:#e8efe9;
+  --txt-1:#aab5ad;
+  --txt-2:#6f7a73;
+  --acc:#c9f53d;       /* verde-limão técnico */
+  --acc-2:#7dd3a8;     /* verde topográfico */
+  --warn:#ffb347;
+  --danger:#ff5d5d;
+  --info:#7cc5ff;
+  --shadow:0 10px 30px rgba(0,0,0,.45);
+  --r-sm:6px;
+  --r-md:10px;
+  --r-lg:14px;
+  --font-sans:'Manrope',-apple-system,BlinkMacSystemFont,sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+body{
+  font-family:var(--font-sans);
+  background:var(--bg-0);
+  color:var(--txt-0);
+  font-size:14px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ===== Layout ===== */
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh;position:relative}
+
+/* ===== Top bar ===== */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;
+  background:var(--bg-1);
+  border-bottom:1px solid var(--line);
+  z-index:1000;
+  gap:10px;
+}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand-mark{
+  width:34px;height:34px;border-radius:8px;
+  background:linear-gradient(135deg,var(--acc) 0%,var(--acc-2) 100%);
+  display:grid;place-items:center;color:#0a0d0c;font-weight:800;
+  font-family:var(--font-mono);font-size:14px;
+  box-shadow:0 0 0 1px rgba(201,245,61,.25), 0 4px 18px rgba(201,245,61,.18);
+}
+.brand-text{display:flex;flex-direction:column;line-height:1;min-width:0}
+.brand-text h1{font-size:14px;font-weight:800;letter-spacing:.5px;color:var(--txt-0);white-space:nowrap}
+.brand-text small{font-size:9.5px;color:var(--txt-2);font-family:var(--font-mono);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px}
+
+.topbar-actions{display:flex;gap:6px;align-items:center}
+.icon-btn{
+  width:38px;height:38px;border-radius:var(--r-sm);
+  background:var(--bg-2);border:1px solid var(--line);
+  color:var(--txt-0);display:grid;place-items:center;cursor:pointer;
+  transition:all .15s ease;
+}
+.icon-btn:hover,.icon-btn:active{background:var(--bg-3);border-color:var(--line-2)}
+.icon-btn.active{background:var(--acc);color:#0a0d0c;border-color:var(--acc)}
+.icon-btn svg{width:18px;height:18px}
+
+/* ===== GPS indicator ===== */
+.gps-indicator{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 10px;background:var(--bg-2);
+  border:1px solid var(--line);border-radius:var(--r-sm);
+  font-family:var(--font-mono);font-size:10px;letter-spacing:.5px;
+}
+.gps-dot{width:8px;height:8px;border-radius:50%;background:var(--txt-2);transition:background .3s}
+.gps-dot.active{background:var(--acc);box-shadow:0 0 8px var(--acc);animation:pulse 1.8s infinite}
+.gps-dot.error{background:var(--danger)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* ===== Map ===== */
+.map-wrap{flex:1;position:relative;background:#1a1f1c}
+#map{position:absolute;inset:0;background:#0f1411}
+.leaflet-container{background:#0f1411;font-family:var(--font-sans)}
+.leaflet-control-attribution{background:rgba(15,20,17,.85)!important;color:var(--txt-2)!important;font-size:9px!important}
+.leaflet-control-attribution a{color:var(--acc-2)!important}
+
+/* Leaflet default controls customization */
+.leaflet-bar{border:1px solid var(--line)!important;box-shadow:var(--shadow)!important;background:var(--bg-2)!important}
+.leaflet-bar a{background:var(--bg-2)!important;color:var(--txt-0)!important;border-bottom-color:var(--line)!important;width:38px!important;height:38px!important;line-height:38px!important;font-size:18px!important}
+.leaflet-bar a:hover{background:var(--bg-3)!important}
+
+/* ===== Floating action bar (bottom) ===== */
+.fab-bar{
+  position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  display:flex;gap:6px;padding:6px;
+  background:rgba(15,20,17,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--line);border-radius:14px;
+  box-shadow:var(--shadow);z-index:500;
+  max-width:calc(100vw - 28px);
+}
+.fab{
+  min-width:54px;height:50px;border-radius:10px;
+  background:transparent;border:none;color:var(--txt-1);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  cursor:pointer;gap:2px;padding:4px 8px;
+  transition:all .15s ease;font-family:var(--font-sans);
+}
+.fab svg{width:20px;height:20px}
+.fab span{font-size:9px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.fab:hover{background:var(--bg-3);color:var(--txt-0)}
+.fab.primary{background:var(--acc);color:#0a0d0c}
+.fab.primary:hover{background:#d4ff4d}
+.fab.recording{background:var(--danger);color:#fff;animation:pulse 1.5s infinite}
+.fab.active{background:var(--acc-2);color:#0a0d0c}
+
+/* ===== Info panel (top-left overlay) ===== */
+.info-overlay{
+  position:absolute;top:14px;left:14px;
+  background:rgba(15,20,17,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--line);border-radius:var(--r-md);
+  padding:10px 12px;font-family:var(--font-mono);font-size:10.5px;
+  color:var(--txt-1);letter-spacing:.3px;z-index:400;
+  max-width:200px;
+}
+.info-overlay .row{display:flex;justify-content:space-between;gap:10px;margin:2px 0}
+.info-overlay .label{color:var(--txt-2)}
+.info-overlay .value{color:var(--txt-0);font-weight:500}
+.info-overlay .accent{color:var(--acc)}
+
+/* ===== Bottom sheet (drawer) ===== */
+.sheet-backdrop{
+  position:fixed;inset:0;background:rgba(0,0,0,.5);
+  opacity:0;pointer-events:none;transition:opacity .25s ease;z-index:1500;
+}
+.sheet-backdrop.open{opacity:1;pointer-events:auto}
+
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;
+  background:var(--bg-1);border-top:1px solid var(--line);
+  border-radius:18px 18px 0 0;
+  transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);
+  z-index:1600;max-height:88vh;display:flex;flex-direction:column;
+  box-shadow:0 -10px 40px rgba(0,0,0,.5);
+}
+.sheet.open{transform:translateY(0)}
+.sheet-handle{display:flex;justify-content:center;padding:10px 0 4px}
+.sheet-handle::after{content:"";width:42px;height:4px;background:var(--line-2);border-radius:2px}
+.sheet-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 18px 14px;border-bottom:1px solid var(--line);
+}
+.sheet-title{font-size:16px;font-weight:700;letter-spacing:.2px}
+.sheet-subtitle{font-size:10.5px;color:var(--txt-2);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
+.sheet-close{
+  background:var(--bg-2);border:1px solid var(--line);
+  width:32px;height:32px;border-radius:8px;color:var(--txt-0);
+  display:grid;place-items:center;cursor:pointer;
+}
+.sheet-body{padding:14px 18px 24px;overflow-y:auto;flex:1}
+
+/* ===== Forms ===== */
+.field{margin-bottom:12px}
+.field label{
+  display:block;font-size:10px;font-family:var(--font-mono);
+  text-transform:uppercase;letter-spacing:1px;color:var(--txt-2);
+  margin-bottom:5px;
+}
+.field input,.field select,.field textarea{
+  width:100%;padding:11px 12px;
+  background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-sm);
+  color:var(--txt-0);font-family:var(--font-mono);font-size:13px;
+  transition:border-color .15s;
+}
+.field input:focus,.field select:focus,.field textarea:focus{
+  outline:none;border-color:var(--acc);
+}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.field-row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+/* ===== Buttons ===== */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:11px 16px;border-radius:var(--r-sm);border:1px solid var(--line);
+  background:var(--bg-2);color:var(--txt-0);font-family:var(--font-sans);
+  font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;
+  letter-spacing:.2px;
+}
+.btn:hover{background:var(--bg-3);border-color:var(--line-2)}
+.btn.primary{background:var(--acc);color:#0a0d0c;border-color:var(--acc)}
+.btn.primary:hover{background:#d4ff4d;border-color:#d4ff4d}
+.btn.danger{background:transparent;color:var(--danger);border-color:var(--danger)}
+.btn.danger:hover{background:var(--danger);color:#fff}
+.btn.full{width:100%}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+.btn svg{width:16px;height:16px}
+
+/* ===== List items ===== */
+.list{display:flex;flex-direction:column;gap:8px}
+.list-empty{
+  text-align:center;padding:30px 20px;color:var(--txt-2);
+  font-family:var(--font-mono);font-size:11px;letter-spacing:.5px;
+  border:1px dashed var(--line);border-radius:var(--r-md);
+}
+.parcel-card{
+  background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:12px;display:flex;flex-direction:column;gap:8px;
+  cursor:pointer;transition:all .15s;position:relative;overflow:hidden;
+}
+.parcel-card::before{
+  content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--parcel-color,var(--acc));
+}
+.parcel-card:hover{border-color:var(--line-2);background:var(--bg-3)}
+.parcel-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.parcel-name{font-weight:700;font-size:14px;color:var(--txt-0)}
+.parcel-code{font-family:var(--font-mono);font-size:10px;color:var(--txt-2);letter-spacing:.5px}
+.parcel-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-family:var(--font-mono);font-size:10.5px}
+.parcel-stat{display:flex;flex-direction:column;gap:1px}
+.parcel-stat .lbl{color:var(--txt-2);font-size:9px;letter-spacing:1px;text-transform:uppercase}
+.parcel-stat .val{color:var(--txt-0);font-weight:500}
+.parcel-actions{display:flex;gap:4px;margin-top:2px}
+.mini-btn{
+  flex:1;padding:6px 8px;background:var(--bg-1);border:1px solid var(--line);
+  border-radius:var(--r-sm);color:var(--txt-1);cursor:pointer;
+  font-size:10.5px;font-weight:600;letter-spacing:.3px;
+  display:flex;align-items:center;justify-content:center;gap:4px;
+}
+.mini-btn:hover{background:var(--bg-3);color:var(--txt-0)}
+.mini-btn svg{width:12px;height:12px}
+.mini-btn.danger{color:var(--danger)}
+.mini-btn.danger:hover{background:rgba(255,93,93,.1);border-color:var(--danger)}
+
+/* ===== Coordinate list (vertices) ===== */
+.coord-list{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto}
+.coord-row{
+  display:grid;grid-template-columns:32px 1fr 1fr 32px;align-items:center;gap:8px;
+  padding:8px 10px;background:var(--bg-2);border:1px solid var(--line);
+  border-radius:var(--r-sm);font-family:var(--font-mono);font-size:11px;
+}
+.coord-row .idx{color:var(--acc);font-weight:700}
+.coord-row .lat,.coord-row .lng{color:var(--txt-0)}
+.coord-row .del{
+  background:transparent;border:none;color:var(--txt-2);cursor:pointer;
+  display:grid;place-items:center;width:24px;height:24px;border-radius:4px;
+}
+.coord-row .del:hover{color:var(--danger);background:rgba(255,93,93,.1)}
+
+/* ===== Tabs ===== */
+.tabs{display:flex;gap:4px;background:var(--bg-2);padding:4px;border-radius:var(--r-sm);margin-bottom:14px;border:1px solid var(--line)}
+.tab{
+  flex:1;padding:8px 6px;background:transparent;border:none;color:var(--txt-2);
+  border-radius:5px;font-family:var(--font-sans);font-size:11px;font-weight:600;
+  letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:all .15s;
+}
+.tab.active{background:var(--bg-3);color:var(--acc)}
+.tab-pane{display:none}
+.tab-pane.active{display:block}
+
+/* ===== Toast ===== */
+.toast-stack{
+  position:fixed;top:70px;left:50%;transform:translateX(-50%);
+  display:flex;flex-direction:column;gap:8px;z-index:9999;
+  pointer-events:none;
+}
+.toast{
+  background:var(--bg-2);border:1px solid var(--line);
+  padding:10px 14px;border-radius:var(--r-md);font-size:12.5px;
+  box-shadow:var(--shadow);color:var(--txt-0);font-weight:500;
+  animation:toastIn .25s ease;max-width:90vw;
+  display:flex;align-items:center;gap:8px;
+}
+.toast.success{border-color:var(--acc);box-shadow:0 0 0 1px rgba(201,245,61,.2),var(--shadow)}
+.toast.success::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--acc)}
+.toast.error{border-color:var(--danger)}
+.toast.error::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--danger)}
+.toast.info::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--info)}
+@keyframes toastIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+/* ===== Crosshair ===== */
+.crosshair{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:30px;height:30px;pointer-events:none;z-index:400;
+  display:none;
+}
+.crosshair.show{display:block}
+.crosshair::before,.crosshair::after{
+  content:"";position:absolute;background:var(--acc);
+}
+.crosshair::before{left:50%;top:0;bottom:0;width:1px;transform:translateX(-50%)}
+.crosshair::after{top:50%;left:0;right:0;height:1px;transform:translateY(-50%)}
+.crosshair-dot{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:8px;height:8px;border:1.5px solid var(--acc);border-radius:50%;
+  background:transparent;
+}
+
+/* ===== Layer switcher ===== */
+.layer-switcher{
+  position:absolute;top:14px;right:14px;
+  background:rgba(15,20,17,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--line);border-radius:var(--r-md);
+  z-index:400;overflow:hidden;
+}
+.layer-btn{
+  display:block;padding:9px 13px;background:transparent;border:none;
+  color:var(--txt-1);cursor:pointer;font-size:10.5px;font-weight:600;
+  letter-spacing:.5px;text-transform:uppercase;width:100%;text-align:left;
+  font-family:var(--font-mono);border-bottom:1px solid var(--line);
+}
+.layer-btn:last-child{border-bottom:none}
+.layer-btn.active{background:var(--bg-3);color:var(--acc)}
+
+/* ===== Splash / Manual coord modal ===== */
+.split-mode-banner{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  background:var(--warn);color:#0a0d0c;padding:8px 14px;
+  border-radius:var(--r-md);font-size:11.5px;font-weight:700;
+  letter-spacing:.5px;text-transform:uppercase;z-index:450;
+  box-shadow:var(--shadow);display:none;align-items:center;gap:8px;
+}
+.split-mode-banner.show{display:flex}
+
+/* ===== Color picker ===== */
+.color-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.color-swatch{
+  aspect-ratio:1;border-radius:6px;cursor:pointer;border:2px solid transparent;
+  transition:transform .1s;
+}
+.color-swatch:hover{transform:scale(1.1)}
+.color-swatch.selected{border-color:var(--txt-0);transform:scale(1.1)}
+
+/* ===== Section divider ===== */
+.section-divider{
+  display:flex;align-items:center;gap:10px;margin:18px 0 10px;
+  color:var(--txt-2);font-family:var(--font-mono);font-size:10px;
+  letter-spacing:1.5px;text-transform:uppercase;
+}
+.section-divider::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* ===== Stat cards (project summary) ===== */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.stat-card{
+  background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:12px;
+}
+.stat-card .lbl{font-family:var(--font-mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--txt-2)}
+.stat-card .val{font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--txt-0);margin-top:4px}
+.stat-card .unit{font-size:10px;color:var(--txt-2);font-weight:400;margin-left:3px}
+
+/* ===== Leaflet popup custom ===== */
+.leaflet-popup-content-wrapper{
+  background:var(--bg-1)!important;color:var(--txt-0)!important;
+  border:1px solid var(--line)!important;border-radius:var(--r-md)!important;
+  box-shadow:var(--shadow)!important;
+}
+.leaflet-popup-tip{background:var(--bg-1)!important;border:1px solid var(--line)!important}
+.leaflet-popup-content{margin:10px 14px!important;font-family:var(--font-sans)!important;font-size:12px!important}
+.popup-title{font-weight:700;font-size:13px;margin-bottom:4px;color:var(--acc)}
+.popup-row{font-family:var(--font-mono);font-size:10.5px;color:var(--txt-1);margin:2px 0}
+.leaflet-container a.leaflet-popup-close-button{color:var(--txt-2)!important}
+
+/* ===== Scrollbars ===== */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--txt-2)}
+
+/* ===== Mobile tweaks ===== */
+@media (max-width:480px){
+  .brand-text small{display:none}
+  .info-overlay{font-size:10px;padding:8px 10px;max-width:170px}
+  .fab span{font-size:8.5px}
+  .fab{min-width:48px;height:46px}
+}
+
+/* Help screen */
+.help-step{
+  display:flex;gap:12px;padding:12px;background:var(--bg-2);
+  border:1px solid var(--line);border-radius:var(--r-md);margin-bottom:8px;
+}
+.help-step-num{
+  width:24px;height:24px;border-radius:50%;background:var(--acc);
+  color:#0a0d0c;font-weight:700;display:grid;place-items:center;
+  font-family:var(--font-mono);font-size:12px;flex-shrink:0;
+}
+.help-step-text{font-size:12.5px;line-height:1.5;color:var(--txt-1)}
+.help-step-text strong{color:var(--txt-0)}
+
+/* Draw vertex preview */
+.draw-preview{
+  position:absolute;bottom:80px;left:14px;
+  background:rgba(15,20,17,.92);backdrop-filter:blur(12px);
+  border:1px solid var(--acc);border-radius:var(--r-md);
+  padding:10px 12px;font-family:var(--font-mono);font-size:10.5px;
+  color:var(--txt-0);z-index:450;display:none;
+  box-shadow:0 0 0 1px rgba(201,245,61,.15),var(--shadow);
+}
+.draw-preview.show{display:block}
+.draw-preview .lbl{color:var(--acc);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px}
+.draw-preview .vertex-count{font-size:14px;font-weight:700}
+
+/* Hidden file input */
+.file-input-hidden{display:none}
+
+/* ===== Edit mode ===== */
+.edit-banner{
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);
+  background:var(--info);color:#0a0d0c;padding:8px 14px;
+  border-radius:var(--r-md);font-size:11.5px;font-weight:700;
+  letter-spacing:.5px;text-transform:uppercase;z-index:450;
+  box-shadow:var(--shadow);display:none;align-items:center;gap:8px;
+  max-width:calc(100vw - 30px);
+}
+.edit-banner.show{display:flex}
+.edit-banner button{
+  background:rgba(10,13,12,.2);border:1px solid rgba(10,13,12,.4);
+  color:#0a0d0c;padding:3px 8px;border-radius:4px;font-weight:700;
+  font-size:10.5px;cursor:pointer;margin-left:6px;
+}
+.edit-banner button:hover{background:rgba(10,13,12,.35)}
+
+/* Snap indicator */
+.snap-indicator{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  pointer-events:none;z-index:600;display:none;
+  width:34px;height:34px;border-radius:50%;
+  border:2px solid var(--warn);background:rgba(255,179,71,.2);
+  animation:snapPulse .6s ease-out;
+}
+@keyframes snapPulse{
+  0%{transform:translate(-50%,-50%) scale(.5);opacity:0}
+  60%{transform:translate(-50%,-50%) scale(1.1);opacity:1}
+  100%{transform:translate(-50%,-50%) scale(1);opacity:.8}
+}
+
+/* Snap toggle in edit banner */
+.snap-toggle{
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(10,13,12,.2);padding:3px 8px;border-radius:4px;
+  font-size:10.5px;cursor:pointer;
+}
+.snap-toggle input{accent-color:#0a0d0c}
+
+/* Editable vertex markers (draggable) */
+.edit-vertex{
+  background:var(--bg-1)!important;
+  border:2px solid var(--warn)!important;
+  border-radius:50%!important;
+  width:18px!important;height:18px!important;
+  margin-left:-9px!important;margin-top:-9px!important;
+  cursor:grab;
+  box-shadow:0 0 0 2px rgba(255,179,71,.25);
+}
+.edit-vertex:active{cursor:grabbing}
+.edit-vertex.midpoint{
+  border-color:var(--acc-2)!important;
+  border-style:dashed!important;
+  opacity:.7;
+  width:14px!important;height:14px!important;
+  margin-left:-7px!important;margin-top:-7px!important;
+  box-shadow:none;
+}
+.edit-vertex.midpoint:hover{opacity:1}
+
+/* Snap hint marker */
+.snap-target{
+  background:transparent!important;
+  border:2px solid var(--warn)!important;
+  border-radius:50%!important;
+  width:22px!important;height:22px!important;
+  margin-left:-11px!important;margin-top:-11px!important;
+  box-shadow:0 0 0 3px rgba(255,179,71,.3);
+  pointer-events:none;
+}
+
+/* About / Help — author card */
+.author-card{
+  margin-top:16px;
+  background:linear-gradient(135deg,var(--bg-2) 0%,var(--bg-3) 100%);
+  border:1px solid var(--line);border-left:3px solid var(--acc);
+  border-radius:var(--r-md);padding:14px 16px;
+}
+.author-card .auth-title{
+  font-family:var(--font-mono);font-size:9.5px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--acc);margin-bottom:8px;
+}
+.author-card .auth-name{
+  font-size:14px;font-weight:700;color:var(--txt-0);margin-bottom:4px;
+}
+.author-card .auth-line{
+  font-size:11.5px;color:var(--txt-1);line-height:1.6;
+}
+.author-card a{color:var(--acc-2);text-decoration:none;font-family:var(--font-mono);font-size:11px}
+.author-card a:hover{text-decoration:underline}
+.author-card .auth-inst{
+  margin-top:10px;padding-top:10px;border-top:1px solid var(--line);
+  font-size:10.5px;color:var(--txt-2);font-family:var(--font-mono);
+  letter-spacing:.4px;line-height:1.6;
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">GP</div>
+      <div class="brand-text">
+        <h1>GeoParcel</h1>
+        <small>Levantamento · Parcelamento</small>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <div class="gps-indicator" id="gpsIndicator">
+        <span class="gps-dot" id="gpsDot"></span>
+        <span id="gpsText">GNSS</span>
+      </div>
+      <button class="icon-btn" id="btnHelp" title="Ajuda">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .9-1 1.7"/><circle cx="12" cy="17" r=".5" fill="currentColor"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============ MAP WRAPPER ============ -->
+  <div class="map-wrap">
+    <div id="map"></div>
+
+    <!-- Live GPS + cursor info -->
+    <div class="info-overlay" id="infoOverlay">
+      <div class="row"><span class="label">LAT</span><span class="value" id="ovLat">—</span></div>
+      <div class="row"><span class="label">LON</span><span class="value" id="ovLng">—</span></div>
+      <div class="row"><span class="label">ZOOM</span><span class="value accent" id="ovZoom">—</span></div>
+      <div class="row"><span class="label">PARC</span><span class="value accent" id="ovParcels">0</span></div>
+    </div>
+
+    <!-- Layer switcher -->
+    <div class="layer-switcher">
+      <button class="layer-btn active" data-layer="satellite">Satélite</button>
+      <button class="layer-btn" data-layer="terrain">Terreno</button>
+      <button class="layer-btn" data-layer="osm">Mapa</button>
+    </div>
+
+    <!-- Split-mode banner -->
+    <div class="split-mode-banner" id="splitBanner">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 12h18M12 3v18"/></svg>
+      Modo subdivisão · trace a linha divisória
+    </div>
+
+    <!-- Edit-mode banner -->
+    <div class="edit-banner" id="editBanner">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      <span>Edição</span>
+      <label class="snap-toggle"><input type="checkbox" id="snapToggle" checked /> Snap</label>
+      <button id="editDone">Concluir</button>
+    </div>
+
+    <!-- Crosshair for manual point -->
+    <div class="crosshair" id="crosshair">
+      <div class="crosshair-dot"></div>
+    </div>
+
+    <!-- Drawing preview -->
+    <div class="draw-preview" id="drawPreview">
+      <div class="lbl">Desenhando</div>
+      <div class="vertex-count"><span id="dpCount">0</span> vértices</div>
+    </div>
+
+    <!-- ============ FAB BAR ============ -->
+    <div class="fab-bar">
+      <button class="fab primary" id="fabDraw" title="Desenhar parcela">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        <span>Desenhar</span>
+      </button>
+      <button class="fab" id="fabGPS" title="Adicionar ponto GPS">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        <span>GPS</span>
+      </button>
+      <button class="fab" id="fabManual" title="Inserir coordenada">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        <span>Manual</span>
+      </button>
+      <button class="fab" id="fabFinish" title="Finalizar polígono" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12l5 5L20 7"/></svg>
+        <span>Concluir</span>
+      </button>
+      <button class="fab" id="fabUndo" title="Desfazer vértice" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-15-6.7L3 13"/></svg>
+        <span>Desfazer</span>
+      </button>
+      <button class="fab" id="fabParcels" title="Lista de parcelas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span>Parcelas</span>
+      </button>
+      <button class="fab" id="fabLocate" title="Minha localização">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+        <span>Centrar</span>
+      </button>
+      <button class="fab" id="fabMore" title="Mais">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="19" cy="12" r="1.5" fill="currentColor"/></svg>
+        <span>Mais</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ BOTTOM SHEETS ============ -->
+<div class="sheet-backdrop" id="sheetBackdrop"></div>
+
+<!-- Sheet: parcels list -->
+<div class="sheet" id="sheetParcels">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div>
+      <div class="sheet-title">Parcelas do Projeto</div>
+      <div class="sheet-subtitle" id="parcelsCount">0 parcelas cadastradas</div>
+    </div>
+    <button class="sheet-close" data-close-sheet>✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="lbl">Área Total</div>
+        <div class="val"><span id="totalArea">0</span><span class="unit" id="totalAreaUnit">m²</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="lbl">Perímetro Total</div>
+        <div class="val"><span id="totalPerim">0</span><span class="unit">m</span></div>
+      </div>
+    </div>
+    <div class="btn-group" style="margin-bottom:14px">
+      <button class="btn" id="btnNewProject" style="flex:1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Novo
+      </button>
+      <button class="btn" id="btnSaveProject" style="flex:1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Salvar
+      </button>
+    </div>
+    <div class="list" id="parcelList"></div>
+  </div>
+</div>
+
+<!-- Sheet: parcel details / edit -->
+<div class="sheet" id="sheetDetails">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div>
+      <div class="sheet-title" id="detailsTitle">Detalhes da Parcela</div>
+      <div class="sheet-subtitle" id="detailsCode">—</div>
+    </div>
+    <button class="sheet-close" data-close-sheet>✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="tabs">
+      <button class="tab active" data-tab="info">Info</button>
+      <button class="tab" data-tab="vertices">Vértices</button>
+      <button class="tab" data-tab="actions">Ações</button>
+    </div>
+
+    <div class="tab-pane active" id="tab-info">
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="lbl">Área</div>
+          <div class="val"><span id="dtArea">0</span><span class="unit" id="dtAreaUnit">m²</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">Perímetro</div>
+          <div class="val"><span id="dtPerim">0</span><span class="unit">m</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">Vértices</div>
+          <div class="val" id="dtVertices">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="lbl">Centróide</div>
+          <div class="val" style="font-size:11px" id="dtCentroid">—</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Nome da Parcela</label>
+        <input type="text" id="editName" placeholder="Ex: Lote 01" />
+      </div>
+      <div class="field">
+        <label>Descrição / Observações</label>
+        <textarea id="editDesc" rows="3" placeholder="Proprietário, uso, matrícula..."></textarea>
+      </div>
+      <div class="field">
+        <label>Cor da Parcela</label>
+        <div class="color-grid" id="colorGrid"></div>
+      </div>
+      <button class="btn primary full" id="btnSaveDetails">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
+        Salvar alterações
+      </button>
+    </div>
+
+    <div class="tab-pane" id="tab-vertices">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-family:var(--font-mono);font-size:10.5px;color:var(--txt-2);letter-spacing:.5px">
+        <span>VÉRTICES (LAT, LON)</span>
+        <span id="vCount">0</span>
+      </div>
+      <div class="coord-list" id="coordList"></div>
+    </div>
+
+    <div class="tab-pane" id="tab-actions">
+      <div class="section-divider">Edição da Geometria</div>
+      <button class="btn primary full" id="btnEditPoly" style="margin-bottom:8px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Editar polígono no mapa
+      </button>
+      <div style="font-size:10.5px;color:var(--txt-2);line-height:1.5;margin-bottom:12px">
+        Arraste os <strong style="color:var(--warn)">vértices laranjas</strong> para reposicioná-los.
+        Os pontos <strong style="color:var(--acc-2)">tracejados (meio de aresta)</strong> criam novos vértices.
+        Com <strong>Snap</strong> ativo, vértices próximos a parcelas vizinhas se alinham automaticamente.
+      </div>
+
+      <div class="section-divider">Subdivisão</div>
+      <button class="btn full" id="btnSplit" style="margin-bottom:8px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M12 3v18" stroke-dasharray="3 2"/></svg>
+        Dividir em duas parcelas
+      </button>
+      <button class="btn full" id="btnGrid" style="margin-bottom:8px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+        Subdividir em grade (NxM)
+      </button>
+
+      <div class="section-divider">Exportar</div>
+      <div class="btn-group">
+        <button class="btn" data-export="kml" style="flex:1">KML</button>
+        <button class="btn" data-export="geojson" style="flex:1">GeoJSON</button>
+      </div>
+      <div class="btn-group" style="margin-top:8px">
+        <button class="btn" data-export="csv" style="flex:1">CSV</button>
+        <button class="btn" data-export="dxf" style="flex:1">DXF</button>
+      </div>
+
+      <div class="section-divider">Outras</div>
+      <button class="btn full" id="btnCenterParcel" style="margin-bottom:8px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>
+        Centralizar no mapa
+      </button>
+      <button class="btn full" id="btnReport">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Gerar relatório PDF
+      </button>
+      <button class="btn danger full" id="btnDelete" style="margin-top:12px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        Excluir parcela
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Sheet: manual coordinate input -->
+<div class="sheet" id="sheetManual">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div>
+      <div class="sheet-title">Inserir Coordenada</div>
+      <div class="sheet-subtitle">Adicionar vértice manualmente</div>
+    </div>
+    <button class="sheet-close" data-close-sheet>✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="field">
+      <label>Formato</label>
+      <select id="coordFormat">
+        <option value="dd">Decimal (graus decimais) — recomendado</option>
+        <option value="dms">Graus, minutos, segundos</option>
+        <option value="utm">UTM (zona SIRGAS 2000)</option>
+      </select>
+    </div>
+
+    <div id="formatDD">
+      <div class="field-row">
+        <div class="field">
+          <label>Latitude</label>
+          <input type="text" id="ddLat" placeholder="-11.7295" inputmode="decimal" />
+        </div>
+        <div class="field">
+          <label>Longitude</label>
+          <input type="text" id="ddLng" placeholder="-49.0689" inputmode="decimal" />
+        </div>
+      </div>
+    </div>
+
+    <div id="formatDMS" style="display:none">
+      <label style="display:block;font-size:10px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--txt-2);margin-bottom:5px">Latitude</label>
+      <div class="field-row-3" style="margin-bottom:10px">
+        <div class="field"><input type="number" id="dmsLatD" placeholder="Graus" /></div>
+        <div class="field"><input type="number" id="dmsLatM" placeholder="Min" /></div>
+        <div class="field"><input type="number" id="dmsLatS" placeholder="Seg" step="0.01" /></div>
+      </div>
+      <div class="field">
+        <label>Hemisfério</label>
+        <select id="dmsLatH"><option value="S">Sul (S)</option><option value="N">Norte (N)</option></select>
+      </div>
+      <label style="display:block;font-size:10px;font-family:var(--font-mono);text-transform:uppercase;letter-spacing:1px;color:var(--txt-2);margin-bottom:5px">Longitude</label>
+      <div class="field-row-3" style="margin-bottom:10px">
+        <div class="field"><input type="number" id="dmsLngD" placeholder="Graus" /></div>
+        <div class="field"><input type="number" id="dmsLngM" placeholder="Min" /></div>
+        <div class="field"><input type="number" id="dmsLngS" placeholder="Seg" step="0.01" /></div>
+      </div>
+      <div class="field">
+        <label>Hemisfério</label>
+        <select id="dmsLngH"><option value="W">Oeste (W)</option><option value="E">Leste (E)</option></select>
+      </div>
+    </div>
+
+    <div id="formatUTM" style="display:none">
+      <div class="field-row">
+        <div class="field">
+          <label>Zona UTM</label>
+          <input type="number" id="utmZone" placeholder="22" min="1" max="60" />
+        </div>
+        <div class="field">
+          <label>Hemisfério</label>
+          <select id="utmHemi"><option value="S">Sul</option><option value="N">Norte</option></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Easting (E)</label>
+          <input type="number" id="utmE" placeholder="492000" />
+        </div>
+        <div class="field">
+          <label>Northing (N)</label>
+          <input type="number" id="utmN" placeholder="8704000" />
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group" style="margin-top:6px">
+      <button class="btn primary full" id="btnAddManualPoint">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Adicionar vértice
+      </button>
+    </div>
+    <button class="btn full" id="btnUseCrosshair" style="margin-top:8px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+      Usar mira do mapa
+    </button>
+  </div>
+</div>
+
+<!-- Sheet: more options -->
+<div class="sheet" id="sheetMore">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div>
+      <div class="sheet-title">Ferramentas</div>
+      <div class="sheet-subtitle">Importar · Exportar · Projeto</div>
+    </div>
+    <button class="sheet-close" data-close-sheet>✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="section-divider">Projeto</div>
+    <div class="field">
+      <label>Nome do projeto</label>
+      <input type="text" id="projectName" placeholder="Levantamento Gleba X" />
+    </div>
+    <div class="btn-group">
+      <button class="btn primary" id="btnSaveAll" style="flex:1">Salvar projeto</button>
+      <button class="btn" id="btnLoadAll" style="flex:1">Carregar</button>
+    </div>
+
+    <div class="section-divider">Importar</div>
+    <div class="btn-group">
+      <button class="btn" id="btnImportKML" style="flex:1">KML / KMZ</button>
+      <button class="btn" id="btnImportGeoJSON" style="flex:1">GeoJSON</button>
+    </div>
+    <div class="btn-group" style="margin-top:8px">
+      <button class="btn" id="btnImportCSV" style="flex:1">CSV de pontos</button>
+    </div>
+    <input type="file" class="file-input-hidden" id="fileImport" accept=".kml,.geojson,.json,.csv,.txt" />
+
+    <div class="section-divider">Exportar tudo</div>
+    <div class="btn-group">
+      <button class="btn" data-export-all="kml" style="flex:1">KML</button>
+      <button class="btn" data-export-all="geojson" style="flex:1">GeoJSON</button>
+    </div>
+    <div class="btn-group" style="margin-top:8px">
+      <button class="btn" data-export-all="csv" style="flex:1">CSV</button>
+      <button class="btn" data-export-all="dxf" style="flex:1">DXF</button>
+    </div>
+    <button class="btn full" id="btnReportAll" style="margin-top:8px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Relatório PDF completo
+    </button>
+
+    <div class="section-divider">Unidades</div>
+    <div class="field">
+      <label>Unidade de área</label>
+      <select id="areaUnit">
+        <option value="auto">Automática (m² / ha)</option>
+        <option value="m2">Metros quadrados (m²)</option>
+        <option value="ha">Hectares (ha)</option>
+        <option value="alq">Alqueire paulista (24.200 m²)</option>
+      </select>
+    </div>
+
+    <div class="section-divider">Perigo</div>
+    <button class="btn danger full" id="btnClearAll">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      Limpar todas as parcelas
+    </button>
+  </div>
+</div>
+
+<!-- Sheet: help -->
+<div class="sheet" id="sheetHelp">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header">
+    <div>
+      <div class="sheet-title">Como usar</div>
+      <div class="sheet-subtitle">Guia rápido em 6 passos</div>
+    </div>
+    <button class="sheet-close" data-close-sheet>✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="help-step"><div class="help-step-num">1</div><div class="help-step-text"><strong>Desenhar:</strong> Toque em <strong>Desenhar</strong> e depois toque no mapa para marcar cada vértice. Use <strong>Concluir</strong> quando terminar (mínimo 3 vértices).</div></div>
+    <div class="help-step"><div class="help-step-num">2</div><div class="help-step-text"><strong>GPS:</strong> Use <strong>GPS</strong> para adicionar o vértice na sua posição GNSS atual durante o desenho (ideal em campo).</div></div>
+    <div class="help-step"><div class="help-step-num">3</div><div class="help-step-text"><strong>Manual:</strong> Use <strong>Manual</strong> para digitar coordenadas (decimais, GMS ou UTM SIRGAS).</div></div>
+    <div class="help-step"><div class="help-step-num">4</div><div class="help-step-text"><strong>Editar:</strong> Abra a parcela, vá em <strong>Ações</strong> e toque em <em>Editar polígono</em>. Arraste vértices laranjas para movê-los; pontos tracejados de meio-de-aresta criam novos vértices. O <strong>snap</strong> ajusta automaticamente vértices próximos para manter integridade topológica entre parcelas adjacentes.</div></div>
+    <div class="help-step"><div class="help-step-num">5</div><div class="help-step-text"><strong>Subdividir:</strong> Em <strong>Ações</strong>, escolha <em>Dividir</em> (corte por linha) ou <em>Grade NxM</em> (parcelamento regular).</div></div>
+    <div class="help-step"><div class="help-step-num">6</div><div class="help-step-text"><strong>Exportar:</strong> Em <strong>Mais</strong> exporte para KML, GeoJSON, CSV, DXF ou gere relatório PDF para regularização.</div></div>
+    <div style="margin-top:14px;padding:12px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-md);font-size:11px;color:var(--txt-2);line-height:1.6">
+      <strong style="color:var(--acc-2)">Datum:</strong> Coordenadas em WGS84/SIRGAS 2000 (compatíveis para fins cartográficos no Brasil).<br>
+      <strong style="color:var(--acc-2)">Cálculos:</strong> Áreas geodésicas (esferóide), perímetros pela fórmula de Haversine.<br>
+      <strong style="color:var(--acc-2)">Snap topológico:</strong> Raio de ajuste de ~2 m em zoom de campo; alinha vértices a vizinhos para evitar gaps e sobreposições.<br>
+      <strong style="color:var(--acc-2)">Off-line:</strong> O app salva automaticamente no navegador (localStorage).
+    </div>
+
+    <div class="author-card">
+      <div class="auth-title">Sobre · Autoria</div>
+      <div class="auth-name">Criado por J. P. Santos</div>
+      <div class="auth-line">Contato: <a href="mailto:santosjp@uft.edu.br">santosjp@uft.edu.br</a></div>
+      <div class="auth-line">Para fins acadêmicos.</div>
+      <div class="auth-inst">
+        Curso de Agronomia — UFT<br>
+        Campus Universitário de Gurupi — TO
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast stack -->
+<div class="toast-stack" id="toastStack"></div>
+
+<!-- Hidden file input for project load -->
+<input type="file" class="file-input-hidden" id="fileLoadProject" accept=".json" />
+
+<!-- Libraries -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@7.0.0/turf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+/* ===========================================================
+   GeoParcel — Geoprocessing & territorial parcelling
+   =========================================================== */
+
+const STORAGE_KEY = 'geoparcel.project.v1';
+const DEFAULT_CENTER = [-11.7295, -49.0689]; // Gurupi-TO fallback
+const PALETTE = ['#c9f53d','#7dd3a8','#7cc5ff','#ffb347','#ff5d5d','#c779ff','#ff7ec1','#9bf0e1','#ffd166','#ef476f','#06d6a0','#118ab2','#f78c6b','#a78bfa','#fbbf24','#34d399'];
+
+const state = {
+  map:null,
+  baseLayers:{},
+  currentBase:'satellite',
+  parcels:[],         // {id,name,desc,color,coords:[[lat,lng]...]}
+  selectedId:null,
+  draftCoords:[],
+  draftMarkers:[],
+  draftPolyline:null,
+  isDrawing:false,
+  isPickingForSplit:false,
+  splitTargetId:null,
+  splitCoords:[],
+  splitMarkers:[],
+  splitPolyline:null,
+  watchId:null,
+  lastGPS:null,
+  userMarker:null,
+  userAccuracyCircle:null,
+  projectName:'Projeto sem título',
+  areaUnit:'auto',
+  parcelLayers:new Map(),  // id -> {polygon, label, vertexMarkers:[]}
+  // Edit mode
+  isEditing:false,
+  editTargetId:null,
+  editVertexMarkers:[],
+  editMidpointMarkers:[],
+  editPolyline:null,
+  snapEnabled:true,
+  snapHintMarker:null,
+};
+
+/* ============ Utility ============ */
+function $(sel){return document.querySelector(sel)}
+function $$(sel){return document.querySelectorAll(sel)}
+function uid(){return 'p_'+Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4)}
+function nextParcelNumber(){
+  const nums = state.parcels.map(p=>{
+    const m=(p.name||'').match(/(\d+)/);return m?parseInt(m[1]):0;
+  });
+  return (Math.max(0,...nums))+1;
+}
+function nextColor(){
+  return PALETTE[state.parcels.length % PALETTE.length];
+}
+function toast(msg,type='info',ms=2600){
+  const t=document.createElement('div');
+  t.className='toast '+type;
+  t.textContent=msg;
+  $('#toastStack').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300)},ms);
+}
+
+/* ============ Formatting ============ */
+function fmtCoord(v,digits=6){return Number(v).toFixed(digits)}
+function fmtDistance(m){
+  if(m<1000) return m.toFixed(2)+' m';
+  return (m/1000).toFixed(3)+' km';
+}
+function fmtArea(m2){
+  const u=state.areaUnit;
+  if(u==='m2') return {val:m2.toFixed(2),unit:'m²'};
+  if(u==='ha') return {val:(m2/10000).toFixed(4),unit:'ha'};
+  if(u==='alq') return {val:(m2/24200).toFixed(4),unit:'alq'};
+  // auto
+  if(m2<10000) return {val:m2.toFixed(2),unit:'m²'};
+  return {val:(m2/10000).toFixed(4),unit:'ha'};
+}
+function dmsToDecimal(d,m,s,h){
+  let v=Math.abs(d)+(m||0)/60+(s||0)/3600;
+  if(h==='S'||h==='W') v=-v;
+  return v;
+}
+function utmToLatLng(zone,e,n,hemi){
+  // SIRGAS2000/WGS84 approximation
+  const a=6378137, e2=0.00669437999014, k0=0.9996;
+  const x=e-500000;
+  const y=hemi==='S'?n-10000000:n;
+  const M=y/k0;
+  const mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2*e2*e2/256));
+  const e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const phi1=mu+(3*e1/2-27*e1*e1*e1/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1*e1*e1*e1/32)*Math.sin(4*mu)+(151*e1*e1*e1/96)*Math.sin(6*mu);
+  const N1=a/Math.sqrt(1-e2*Math.sin(phi1)**2);
+  const T1=Math.tan(phi1)**2;
+  const C1=(e2/(1-e2))*Math.cos(phi1)**2;
+  const R1=a*(1-e2)/Math.pow(1-e2*Math.sin(phi1)**2,1.5);
+  const D=x/(N1*k0);
+  const lat=phi1-(N1*Math.tan(phi1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*(e2/(1-e2)))*D*D*D*D/24+(61+90*T1+298*C1+45*T1*T1-252*(e2/(1-e2))-3*C1*C1)*D*D*D*D*D*D/720);
+  const lng=(D-(1+2*T1+C1)*D*D*D/6+(5-2*C1+28*T1-3*C1*C1+8*(e2/(1-e2))+24*T1*T1)*D*D*D*D*D/120)/Math.cos(phi1);
+  const lng0=(zone-1)*6-180+3;
+  return [lat*180/Math.PI, lng0+lng*180/Math.PI];
+}
+
+/* ============ Geometry calcs (via turf) ============ */
+function calcArea(coords){
+  if(coords.length<3) return 0;
+  const ring=coords.map(c=>[c[1],c[0]]); ring.push(ring[0]);
+  try{return turf.area(turf.polygon([ring]))}catch(e){return 0}
+}
+function calcPerimeter(coords){
+  if(coords.length<2) return 0;
+  let total=0;
+  for(let i=0;i<coords.length;i++){
+    const a=coords[i],b=coords[(i+1)%coords.length];
+    total+=turf.distance(turf.point([a[1],a[0]]),turf.point([b[1],b[0]]),{units:'meters'});
+  }
+  return total;
+}
+function calcCentroid(coords){
+  if(coords.length<3) return coords[0];
+  const ring=coords.map(c=>[c[1],c[0]]); ring.push(ring[0]);
+  try{
+    const c=turf.centroid(turf.polygon([ring])).geometry.coordinates;
+    return [c[1],c[0]];
+  }catch(e){return coords[0]}
+}
+
+/* ============ Map setup ============ */
+function initMap(){
+  state.map = L.map('map',{
+    zoomControl:true,
+    attributionControl:true,
+    preferCanvas:true,
+    tap:true,
+  }).setView(DEFAULT_CENTER,15);
+  L.control.zoom({position:'bottomright'}).remove(); // we kept default top-left
+
+  state.baseLayers.satellite = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:20,attribution:'Esri World Imagery'}
+  );
+  state.baseLayers.terrain = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+    {maxZoom:19,attribution:'Esri Topo'}
+  );
+  state.baseLayers.osm = L.tileLayer(
+    'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {maxZoom:19,attribution:'© OpenStreetMap'}
+  );
+  state.baseLayers.satellite.addTo(state.map);
+
+  // Map events
+  state.map.on('click',handleMapClick);
+  state.map.on('mousemove',updateMouseInfo);
+  state.map.on('zoomend moveend',updateMouseInfo);
+}
+
+function setBaseLayer(name){
+  if(state.currentBase===name) return;
+  state.map.removeLayer(state.baseLayers[state.currentBase]);
+  state.baseLayers[name].addTo(state.map);
+  state.currentBase=name;
+  $$('.layer-btn').forEach(b=>b.classList.toggle('active',b.dataset.layer===name));
+}
+
+function updateMouseInfo(e){
+  if(e && e.latlng){
+    $('#ovLat').textContent=fmtCoord(e.latlng.lat);
+    $('#ovLng').textContent=fmtCoord(e.latlng.lng);
+  }
+  $('#ovZoom').textContent=state.map.getZoom();
+  $('#ovParcels').textContent=state.parcels.length;
+}
+
+/* ============ Drawing ============ */
+function startDraw(){
+  if(state.isPickingForSplit) return;
+  if(state.isEditing) finishEdit();
+  state.isDrawing=true;
+  state.draftCoords=[];
+  clearDraftLayers();
+  $('#fabDraw').classList.add('recording');
+  $('#fabFinish').style.display='flex';
+  $('#fabUndo').style.display='flex';
+  $('#drawPreview').classList.add('show');
+  $('#dpCount').textContent='0';
+  toast('Toque no mapa para marcar vértices','info');
+}
+function stopDraw(){
+  state.isDrawing=false;
+  state.draftCoords=[];
+  clearDraftLayers();
+  $('#fabDraw').classList.remove('recording');
+  $('#fabFinish').style.display='none';
+  $('#fabUndo').style.display='none';
+  $('#drawPreview').classList.remove('show');
+}
+function clearDraftLayers(){
+  state.draftMarkers.forEach(m=>state.map.removeLayer(m));
+  state.draftMarkers=[];
+  if(state.draftPolyline){state.map.removeLayer(state.draftPolyline);state.draftPolyline=null}
+}
+function handleMapClick(e){
+  if(state.isDrawing){
+    addVertex([e.latlng.lat,e.latlng.lng]);
+  } else if(state.isPickingForSplit){
+    addSplitVertex([e.latlng.lat,e.latlng.lng]);
+  }
+}
+function addVertex(latlng){
+  state.draftCoords.push(latlng);
+  refreshDraftLayers();
+  $('#dpCount').textContent=state.draftCoords.length;
+}
+function undoVertex(){
+  if(!state.draftCoords.length) return;
+  state.draftCoords.pop();
+  refreshDraftLayers();
+  $('#dpCount').textContent=state.draftCoords.length;
+}
+function refreshDraftLayers(){
+  clearDraftLayers();
+  state.draftCoords.forEach((c,i)=>{
+    const m=L.circleMarker(c,{radius:6,color:'#c9f53d',weight:2,fillColor:'#0a0d0c',fillOpacity:1}).addTo(state.map);
+    m.bindTooltip(String(i+1),{permanent:true,direction:'top',className:'vertex-tip'});
+    state.draftMarkers.push(m);
+  });
+  if(state.draftCoords.length>=2){
+    const path=state.draftCoords.length>=3?[...state.draftCoords,state.draftCoords[0]]:state.draftCoords;
+    state.draftPolyline=L.polyline(path,{color:'#c9f53d',weight:2,dashArray:'5,5'}).addTo(state.map);
+  }
+}
+function finishDraw(){
+  if(state.draftCoords.length<3){toast('Mínimo de 3 vértices','error');return}
+  const coords=[...state.draftCoords];
+  const num=nextParcelNumber();
+  const parcel={
+    id:uid(),
+    name:'Parcela '+String(num).padStart(2,'0'),
+    desc:'',
+    color:nextColor(),
+    coords:coords,
+    createdAt:Date.now(),
+  };
+  state.parcels.push(parcel);
+  stopDraw();
+  renderParcelLayers();
+  saveProject();
+  toast('Parcela criada: '+parcel.name,'success');
+  openSheet('sheetDetails');
+  selectParcel(parcel.id);
+}
+
+/* ============ Parcel rendering ============ */
+function clearParcelLayers(){
+  state.parcelLayers.forEach(obj=>{
+    if(obj.polygon) state.map.removeLayer(obj.polygon);
+    if(obj.label) state.map.removeLayer(obj.label);
+    obj.vertexMarkers.forEach(m=>state.map.removeLayer(m));
+  });
+  state.parcelLayers.clear();
+}
+function renderParcelLayers(){
+  clearParcelLayers();
+  state.parcels.forEach(p=>renderOneParcel(p));
+  $('#ovParcels').textContent=state.parcels.length;
+}
+function renderOneParcel(p){
+  const isSel=state.selectedId===p.id;
+  const poly=L.polygon(p.coords,{
+    color:p.color,weight:isSel?3:2,
+    fillColor:p.color,fillOpacity:isSel?0.28:0.16,
+    smoothFactor:0.5,
+  }).addTo(state.map);
+
+  const area=calcArea(p.coords);
+  const perim=calcPerimeter(p.coords);
+  const af=fmtArea(area);
+  poly.bindPopup(`
+    <div class="popup-title">${escapeHTML(p.name)}</div>
+    <div class="popup-row">Área: ${af.val} ${af.unit}</div>
+    <div class="popup-row">Perímetro: ${fmtDistance(perim)}</div>
+    <div class="popup-row">Vértices: ${p.coords.length}</div>
+  `);
+  poly.on('click',()=>{selectParcel(p.id);openSheet('sheetDetails')});
+
+  const c=calcCentroid(p.coords);
+  const label=L.marker(c,{
+    icon:L.divIcon({
+      className:'parcel-label',
+      html:`<div style="background:rgba(15,20,17,.85);color:${p.color};border:1px solid ${p.color};padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.5px;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.8)">${escapeHTML(p.name)}</div>`,
+      iconSize:[80,18],iconAnchor:[40,9],
+    }),
+    interactive:false,
+  }).addTo(state.map);
+
+  const vertexMarkers=[];
+  if(isSel){
+    p.coords.forEach((c,i)=>{
+      const m=L.circleMarker(c,{radius:5,color:p.color,weight:2,fillColor:'#0a0d0c',fillOpacity:1}).addTo(state.map);
+      m.bindTooltip('V'+(i+1)+'<br>'+fmtCoord(c[0],6)+'<br>'+fmtCoord(c[1],6),{direction:'top'});
+      vertexMarkers.push(m);
+    });
+  }
+
+  state.parcelLayers.set(p.id,{polygon:poly,label:label,vertexMarkers});
+}
+function selectParcel(id){
+  state.selectedId=id;
+  renderParcelLayers();
+  populateDetails(id);
+}
+function escapeHTML(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+/* ============ Parcel list ============ */
+function renderParcelList(){
+  const list=$('#parcelList');
+  list.innerHTML='';
+  $('#parcelsCount').textContent=`${state.parcels.length} parcela${state.parcels.length!==1?'s':''} cadastrada${state.parcels.length!==1?'s':''}`;
+
+  let totalArea=0, totalPerim=0;
+  state.parcels.forEach(p=>{totalArea+=calcArea(p.coords);totalPerim+=calcPerimeter(p.coords)});
+  const af=fmtArea(totalArea);
+  $('#totalArea').textContent=af.val;
+  $('#totalAreaUnit').textContent=af.unit;
+  $('#totalPerim').textContent=totalPerim.toFixed(2);
+
+  if(!state.parcels.length){
+    list.innerHTML='<div class="list-empty">Nenhuma parcela cadastrada.<br>Use o botão Desenhar para começar.</div>';
+    return;
+  }
+
+  state.parcels.forEach(p=>{
+    const area=calcArea(p.coords);
+    const perim=calcPerimeter(p.coords);
+    const af=fmtArea(area);
+    const card=document.createElement('div');
+    card.className='parcel-card';
+    card.style.setProperty('--parcel-color',p.color);
+    card.innerHTML=`
+      <div class="parcel-card-head">
+        <div>
+          <div class="parcel-name">${escapeHTML(p.name)}</div>
+          <div class="parcel-code">${p.id.slice(0,10).toUpperCase()}</div>
+        </div>
+      </div>
+      <div class="parcel-stats">
+        <div class="parcel-stat"><div class="lbl">Área</div><div class="val">${af.val} ${af.unit}</div></div>
+        <div class="parcel-stat"><div class="lbl">Perímetro</div><div class="val">${perim.toFixed(1)} m</div></div>
+        <div class="parcel-stat"><div class="lbl">Vértices</div><div class="val">${p.coords.length}</div></div>
+      </div>
+      <div class="parcel-actions">
+        <button class="mini-btn" data-act="center" data-id="${p.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="9"/></svg>Ver</button>
+        <button class="mini-btn" data-act="edit" data-id="${p.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Editar</button>
+        <button class="mini-btn danger" data-act="del" data-id="${p.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Excluir</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+
+  list.querySelectorAll('.mini-btn').forEach(b=>{
+    b.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const act=b.dataset.act, id=b.dataset.id;
+      if(act==='center'){centerOnParcel(id)}
+      else if(act==='edit'){selectParcel(id);closeAllSheets();openSheet('sheetDetails')}
+      else if(act==='del'){if(confirm('Excluir esta parcela?'))deleteParcel(id)}
+    });
+  });
+}
+
+function centerOnParcel(id){
+  const p=state.parcels.find(x=>x.id===id);
+  if(!p)return;
+  const bounds=L.latLngBounds(p.coords);
+  state.map.fitBounds(bounds,{padding:[50,50]});
+  selectParcel(id);
+  closeAllSheets();
+}
+
+function deleteParcel(id){
+  if(state.isEditing && state.editTargetId === id){
+    state.isEditing = false;
+    state.editTargetId = null;
+    clearEditMarkers();
+    $('#editBanner').classList.remove('show');
+  }
+  state.parcels=state.parcels.filter(p=>p.id!==id);
+  if(state.selectedId===id) state.selectedId=null;
+  renderParcelLayers();
+  renderParcelList();
+  saveProject();
+  toast('Parcela removida','info');
+}
+
+/* ============ Details panel ============ */
+function populateDetails(id){
+  const p=state.parcels.find(x=>x.id===id);
+  if(!p)return;
+  $('#detailsTitle').textContent=p.name;
+  $('#detailsCode').textContent='ID '+p.id.slice(0,10).toUpperCase();
+  const area=calcArea(p.coords);
+  const perim=calcPerimeter(p.coords);
+  const af=fmtArea(area);
+  $('#dtArea').textContent=af.val;
+  $('#dtAreaUnit').textContent=af.unit;
+  $('#dtPerim').textContent=perim.toFixed(2);
+  $('#dtVertices').textContent=p.coords.length;
+  const c=calcCentroid(p.coords);
+  $('#dtCentroid').textContent=fmtCoord(c[0],5)+'\n'+fmtCoord(c[1],5);
+  $('#editName').value=p.name;
+  $('#editDesc').value=p.desc||'';
+  renderColorGrid(p.color);
+  renderCoordList(p);
+}
+function renderColorGrid(selected){
+  const g=$('#colorGrid');g.innerHTML='';
+  PALETTE.forEach(col=>{
+    const s=document.createElement('div');
+    s.className='color-swatch'+(col===selected?' selected':'');
+    s.style.background=col;
+    s.addEventListener('click',()=>{
+      g.querySelectorAll('.color-swatch').forEach(x=>x.classList.remove('selected'));
+      s.classList.add('selected');
+      s.dataset.col=col;
+      g.dataset.selected=col;
+    });
+    s.dataset.col=col;
+    g.appendChild(s);
+  });
+  g.dataset.selected=selected;
+}
+function renderCoordList(p){
+  const list=$('#coordList');list.innerHTML='';
+  $('#vCount').textContent=p.coords.length;
+  p.coords.forEach((c,i)=>{
+    const row=document.createElement('div');
+    row.className='coord-row';
+    row.innerHTML=`
+      <span class="idx">V${i+1}</span>
+      <span class="lat">${fmtCoord(c[0],6)}</span>
+      <span class="lng">${fmtCoord(c[1],6)}</span>
+      <button class="del" data-i="${i}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    `;
+    list.appendChild(row);
+  });
+  list.querySelectorAll('.del').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const i=parseInt(b.dataset.i);
+      if(p.coords.length<=3){toast('Mínimo de 3 vértices','error');return}
+      p.coords.splice(i,1);
+      renderParcelLayers();
+      populateDetails(p.id);
+      saveProject();
+    });
+  });
+}
+
+/* ============ GPS ============ */
+function startGPS(){
+  if(!navigator.geolocation){toast('GPS não suportado','error');return}
+  $('#gpsDot').classList.remove('error');
+  $('#gpsText').textContent='conectando...';
+  state.watchId=navigator.geolocation.watchPosition(
+    pos=>{
+      const lat=pos.coords.latitude, lng=pos.coords.longitude;
+      state.lastGPS={lat,lng,accuracy:pos.coords.accuracy};
+      $('#gpsDot').classList.add('active');
+      $('#gpsText').textContent='±'+Math.round(pos.coords.accuracy)+'m';
+      if(state.userMarker){state.map.removeLayer(state.userMarker);state.map.removeLayer(state.userAccuracyCircle)}
+      state.userAccuracyCircle=L.circle([lat,lng],{radius:pos.coords.accuracy,color:'#7cc5ff',weight:1,fillColor:'#7cc5ff',fillOpacity:0.1}).addTo(state.map);
+      state.userMarker=L.circleMarker([lat,lng],{radius:7,color:'#fff',weight:2,fillColor:'#7cc5ff',fillOpacity:1}).addTo(state.map);
+    },
+    err=>{
+      $('#gpsDot').classList.add('error');
+      $('#gpsText').textContent='sem GPS';
+    },
+    {enableHighAccuracy:true,maximumAge:1000,timeout:15000}
+  );
+}
+function addGPSVertex(){
+  if(!state.lastGPS){toast('Aguardando sinal GPS...','error');return}
+  if(!state.isDrawing){startDraw()}
+  addVertex([state.lastGPS.lat,state.lastGPS.lng]);
+  toast('Vértice GPS adicionado (±'+Math.round(state.lastGPS.accuracy)+'m)','success');
+}
+function locate(){
+  if(state.lastGPS){state.map.setView([state.lastGPS.lat,state.lastGPS.lng],18);return}
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(p=>{
+      state.map.setView([p.coords.latitude,p.coords.longitude],18);
+    },()=>toast('Não foi possível obter localização','error'));
+  }
+}
+
+/* ============ Manual coordinate entry ============ */
+function getManualLatLng(){
+  const fmt=$('#coordFormat').value;
+  if(fmt==='dd'){
+    const lat=parseFloat($('#ddLat').value);
+    const lng=parseFloat($('#ddLng').value);
+    if(isNaN(lat)||isNaN(lng))return null;
+    return [lat,lng];
+  }
+  if(fmt==='dms'){
+    const latD=parseFloat($('#dmsLatD').value)||0;
+    const latM=parseFloat($('#dmsLatM').value)||0;
+    const latS=parseFloat($('#dmsLatS').value)||0;
+    const latH=$('#dmsLatH').value;
+    const lngD=parseFloat($('#dmsLngD').value)||0;
+    const lngM=parseFloat($('#dmsLngM').value)||0;
+    const lngS=parseFloat($('#dmsLngS').value)||0;
+    const lngH=$('#dmsLngH').value;
+    return [dmsToDecimal(latD,latM,latS,latH),dmsToDecimal(lngD,lngM,lngS,lngH)];
+  }
+  if(fmt==='utm'){
+    const z=parseInt($('#utmZone').value);
+    const e=parseFloat($('#utmE').value);
+    const n=parseFloat($('#utmN').value);
+    const h=$('#utmHemi').value;
+    if(isNaN(z)||isNaN(e)||isNaN(n))return null;
+    return utmToLatLng(z,e,n,h);
+  }
+  return null;
+}
+
+/* ============ Import / Export ============ */
+function download(filename,content,mime='text/plain'){
+  const blob=new Blob([content],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=filename;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),500);
+}
+function parcelsToGeoJSON(parcels){
+  return {
+    type:'FeatureCollection',
+    features:parcels.map(p=>({
+      type:'Feature',
+      properties:{name:p.name,desc:p.desc,color:p.color,id:p.id,
+        area_m2:calcArea(p.coords),perimeter_m:calcPerimeter(p.coords)},
+      geometry:{type:'Polygon',coordinates:[[...p.coords.map(c=>[c[1],c[0]]),[p.coords[0][1],p.coords[0][0]]]]}
+    }))
+  };
+}
+function parcelsToKML(parcels){
+  let kml=`<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${escapeHTML(state.projectName)}</name>`;
+  parcels.forEach(p=>{
+    const color=p.color.replace('#','');
+    const r=color.substring(0,2),g=color.substring(2,4),b=color.substring(4,6);
+    const kmlColor='80'+b+g+r;
+    const area=calcArea(p.coords).toFixed(2);
+    const perim=calcPerimeter(p.coords).toFixed(2);
+    kml+=`\n<Placemark><name>${escapeHTML(p.name)}</name>`;
+    kml+=`<description><![CDATA[${escapeHTML(p.desc||'')}\nÁrea: ${area} m²\nPerímetro: ${perim} m]]></description>`;
+    kml+=`<Style><LineStyle><color>ff${b}${g}${r}</color><width>2</width></LineStyle><PolyStyle><color>${kmlColor}</color></PolyStyle></Style>`;
+    kml+=`<Polygon><outerBoundaryIs><LinearRing><coordinates>`;
+    p.coords.forEach(c=>kml+=`${c[1]},${c[0]},0 `);
+    kml+=`${p.coords[0][1]},${p.coords[0][0]},0`;
+    kml+=`</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+  });
+  kml+=`\n</Document></kml>`;
+  return kml;
+}
+function parcelsToCSV(parcels){
+  let csv='parcela,vertice,latitude,longitude,area_m2,perimetro_m\n';
+  parcels.forEach(p=>{
+    const area=calcArea(p.coords).toFixed(2);
+    const perim=calcPerimeter(p.coords).toFixed(2);
+    p.coords.forEach((c,i)=>{
+      csv+=`"${p.name}",${i+1},${c[0].toFixed(8)},${c[1].toFixed(8)},${area},${perim}\n`;
+    });
+  });
+  return csv;
+}
+function parcelsToDXF(parcels){
+  // Minimal AutoCAD DXF R12
+  let dxf='0\nSECTION\n2\nENTITIES\n';
+  parcels.forEach(p=>{
+    dxf+='0\nLWPOLYLINE\n8\n'+(p.name||'PARCELA').replace(/\s+/g,'_')+'\n90\n'+p.coords.length+'\n70\n1\n';
+    p.coords.forEach(c=>{
+      dxf+='10\n'+c[1].toFixed(8)+'\n20\n'+c[0].toFixed(8)+'\n';
+    });
+    // Add text label at centroid
+    const cen=calcCentroid(p.coords);
+    dxf+='0\nTEXT\n8\nLABELS\n10\n'+cen[1].toFixed(8)+'\n20\n'+cen[0].toFixed(8)+'\n40\n0.0001\n1\n'+(p.name||'').replace(/[\n\r]/g,' ')+'\n';
+  });
+  dxf+='0\nENDSEC\n0\nEOF\n';
+  return dxf;
+}
+function exportParcel(p,fmt){
+  const fname=`${(p.name||'parcela').replace(/\s+/g,'_')}.${fmt}`;
+  if(fmt==='geojson') download(fname,JSON.stringify(parcelsToGeoJSON([p]),null,2),'application/geo+json');
+  else if(fmt==='kml') download(fname,parcelsToKML([p]),'application/vnd.google-earth.kml+xml');
+  else if(fmt==='csv') download(fname,parcelsToCSV([p]),'text/csv');
+  else if(fmt==='dxf') download(fname,parcelsToDXF([p]),'application/dxf');
+}
+function exportAll(fmt){
+  if(!state.parcels.length){toast('Nenhuma parcela para exportar','error');return}
+  const fname=`${state.projectName.replace(/\s+/g,'_')}.${fmt}`;
+  if(fmt==='geojson') download(fname,JSON.stringify(parcelsToGeoJSON(state.parcels),null,2),'application/geo+json');
+  else if(fmt==='kml') download(fname,parcelsToKML(state.parcels),'application/vnd.google-earth.kml+xml');
+  else if(fmt==='csv') download(fname,parcelsToCSV(state.parcels),'text/csv');
+  else if(fmt==='dxf') download(fname,parcelsToDXF(state.parcels),'application/dxf');
+  toast('Arquivo exportado','success');
+}
+
+/* ============ Import ============ */
+async function handleFileImport(file){
+  const text=await file.text();
+  const name=file.name.toLowerCase();
+  try{
+    if(name.endsWith('.geojson')||name.endsWith('.json')){
+      const g=JSON.parse(text);
+      importGeoJSON(g);
+    } else if(name.endsWith('.kml')){
+      importKML(text);
+    } else if(name.endsWith('.csv')||name.endsWith('.txt')){
+      importCSV(text);
+    } else {
+      toast('Formato não reconhecido','error');
+    }
+  }catch(e){
+    console.error(e);
+    toast('Erro ao importar: '+e.message,'error');
+  }
+}
+function importGeoJSON(g){
+  let count=0;
+  const feats = g.type==='FeatureCollection'?g.features:(g.type==='Feature'?[g]:[]);
+  feats.forEach(f=>{
+    if(!f.geometry) return;
+    const gt=f.geometry.type;
+    const props=f.properties||{};
+    if(gt==='Polygon'){
+      const coords=f.geometry.coordinates[0].slice(0,-1).map(c=>[c[1],c[0]]);
+      state.parcels.push(makeImportedParcel(coords,props));count++;
+    } else if(gt==='MultiPolygon'){
+      f.geometry.coordinates.forEach(poly=>{
+        const coords=poly[0].slice(0,-1).map(c=>[c[1],c[0]]);
+        state.parcels.push(makeImportedParcel(coords,props));count++;
+      });
+    }
+  });
+  renderParcelLayers();
+  renderParcelList();
+  saveProject();
+  if(count){
+    toast(`${count} parcela${count>1?'s':''} importada${count>1?'s':''}`,'success');
+    fitAllParcels();
+  } else toast('Nenhum polígono encontrado','error');
+}
+function importKML(text){
+  const parser=new DOMParser();
+  const doc=parser.parseFromString(text,'text/xml');
+  const placemarks=doc.querySelectorAll('Placemark');
+  let count=0;
+  placemarks.forEach(pm=>{
+    const name=pm.querySelector('name')?.textContent||'Importada';
+    const desc=pm.querySelector('description')?.textContent||'';
+    pm.querySelectorAll('Polygon').forEach(poly=>{
+      const coordsText=poly.querySelector('outerBoundaryIs LinearRing coordinates')?.textContent;
+      if(!coordsText)return;
+      const coords=coordsText.trim().split(/\s+/).map(t=>{
+        const [lng,lat]=t.split(',').map(Number);return [lat,lng];
+      }).filter(c=>!isNaN(c[0])&&!isNaN(c[1]));
+      if(coords.length>=3){
+        // remove duplicate closing vertex
+        const last=coords[coords.length-1],first=coords[0];
+        if(Math.abs(last[0]-first[0])<1e-9 && Math.abs(last[1]-first[1])<1e-9) coords.pop();
+        state.parcels.push(makeImportedParcel(coords,{name,desc}));count++;
+      }
+    });
+  });
+  renderParcelLayers();
+  renderParcelList();
+  saveProject();
+  if(count){toast(`${count} parcela${count>1?'s':''} importada${count>1?'s':''}`,'success');fitAllParcels()}
+  else toast('Nenhum polígono no KML','error');
+}
+function importCSV(text){
+  // expect columns: name,lat,lng OR parcela,vertice,latitude,longitude
+  const lines=text.trim().split(/\r?\n/);
+  const header=lines[0].toLowerCase().split(/[,;\t]/);
+  const idxName=header.findIndex(h=>/^(parcela|nome|name)$/i.test(h));
+  const idxLat=header.findIndex(h=>/^lat/.test(h));
+  const idxLng=header.findIndex(h=>/^(lng|lon)/.test(h));
+  if(idxLat<0||idxLng<0){toast('CSV deve conter colunas lat e lng','error');return}
+  const groups=new Map();
+  for(let i=1;i<lines.length;i++){
+    const row=lines[i].split(/[,;\t]/);
+    const nm=idxName>=0?(row[idxName]||'').replace(/^"|"$/g,''):'Importada';
+    const lat=parseFloat(row[idxLat]);
+    const lng=parseFloat(row[idxLng]);
+    if(isNaN(lat)||isNaN(lng))continue;
+    if(!groups.has(nm))groups.set(nm,[]);
+    groups.get(nm).push([lat,lng]);
+  }
+  let count=0;
+  groups.forEach((coords,nm)=>{
+    if(coords.length>=3){
+      state.parcels.push(makeImportedParcel(coords,{name:nm}));count++;
+    }
+  });
+  renderParcelLayers();
+  renderParcelList();
+  saveProject();
+  if(count){toast(`${count} parcela${count>1?'s':''} importada${count>1?'s':''}`,'success');fitAllParcels()}
+  else toast('Nenhuma parcela válida','error');
+}
+function makeImportedParcel(coords,props){
+  return {
+    id:uid(),
+    name:props.name||('Parcela '+String(nextParcelNumber()).padStart(2,'0')),
+    desc:props.desc||props.description||'',
+    color:props.color||nextColor(),
+    coords:coords,
+    createdAt:Date.now(),
+  };
+}
+function fitAllParcels(){
+  if(!state.parcels.length)return;
+  const allCoords=state.parcels.flatMap(p=>p.coords);
+  if(allCoords.length){
+    state.map.fitBounds(L.latLngBounds(allCoords),{padding:[40,40]});
+  }
+}
+
+/* ============ Persistence ============ */
+function saveProject(){
+  try{
+    const data={
+      name:state.projectName,
+      parcels:state.parcels,
+      areaUnit:state.areaUnit,
+      savedAt:Date.now(),
+    };
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(data));
+  }catch(e){console.warn('Save failed',e)}
+}
+function loadProject(){
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(!raw)return;
+    const data=JSON.parse(raw);
+    state.projectName=data.name||'Projeto sem título';
+    state.parcels=data.parcels||[];
+    state.areaUnit=data.areaUnit||'auto';
+    $('#projectName').value=state.projectName;
+    $('#areaUnit').value=state.areaUnit;
+    renderParcelLayers();
+    renderParcelList();
+    if(state.parcels.length) fitAllParcels();
+  }catch(e){console.warn('Load failed',e)}
+}
+function exportProjectFile(){
+  const data={
+    name:state.projectName,
+    parcels:state.parcels,
+    areaUnit:state.areaUnit,
+    exportedAt:new Date().toISOString(),
+    version:1,
+  };
+  download((state.projectName||'projeto')+'.json',JSON.stringify(data,null,2),'application/json');
+}
+
+/* ============ Edit mode ============ */
+
+// Compute snap tolerance in degrees based on current zoom (≈ pixels on screen)
+function snapToleranceDeg(){
+  const zoom = state.map.getZoom();
+  // ~ 12 pixels of tolerance, converted to degrees at current zoom & latitude
+  const px = 12;
+  const center = state.map.getCenter();
+  const p1 = state.map.latLngToContainerPoint(center);
+  const p2 = L.point(p1.x + px, p1.y);
+  const ll2 = state.map.containerPointToLatLng(p2);
+  return Math.max(Math.abs(ll2.lng - center.lng), Math.abs(ll2.lat - center.lat));
+}
+
+// Find nearest snap target among OTHER parcels' vertices and edges
+function findSnapTarget(latlng, excludeId){
+  if(!state.snapEnabled) return null;
+  const tol = snapToleranceDeg();
+  let best = null;
+  let bestDist = Infinity;
+
+  state.parcels.forEach(p => {
+    if(p.id === excludeId) return;
+    // 1) Vertex snap (highest priority)
+    p.coords.forEach(v => {
+      const d = Math.hypot(v[0]-latlng[0], v[1]-latlng[1]);
+      if(d < tol && d < bestDist){
+        bestDist = d;
+        best = { type:'vertex', latlng:[v[0],v[1]], parcelId:p.id };
+      }
+    });
+  });
+
+  if(best) return best;
+
+  // 2) Edge snap (project onto segment)
+  state.parcels.forEach(p => {
+    if(p.id === excludeId) return;
+    for(let i=0; i<p.coords.length; i++){
+      const a = p.coords[i];
+      const b = p.coords[(i+1)%p.coords.length];
+      const proj = projectOnSegment(latlng, a, b);
+      const d = Math.hypot(proj[0]-latlng[0], proj[1]-latlng[1]);
+      if(d < tol && d < bestDist){
+        bestDist = d;
+        best = { type:'edge', latlng:proj, parcelId:p.id };
+      }
+    }
+  });
+
+  return best;
+}
+
+function projectOnSegment(p, a, b){
+  const apx = p[0]-a[0], apy = p[1]-a[1];
+  const abx = b[0]-a[0], aby = b[1]-a[1];
+  const len2 = abx*abx + aby*aby;
+  if(len2 === 0) return [a[0],a[1]];
+  let t = (apx*abx + apy*aby)/len2;
+  t = Math.max(0, Math.min(1, t));
+  return [a[0]+t*abx, a[1]+t*aby];
+}
+
+// Validate ring is simple (no self-intersections) using turf
+function ringIsSimple(coords){
+  if(coords.length < 3) return false;
+  try{
+    const ring = [...coords.map(c=>[c[1],c[0]]), [coords[0][1],coords[0][0]]];
+    const poly = turf.polygon([ring]);
+    const kinks = turf.kinks(poly);
+    return kinks.features.length === 0;
+  }catch(e){
+    return false;
+  }
+}
+
+function startEditParcel(parcelId){
+  const p = state.parcels.find(x=>x.id===parcelId);
+  if(!p) return;
+  state.isEditing = true;
+  state.editTargetId = parcelId;
+  closeAllSheets();
+  selectParcel(parcelId);
+  $('#editBanner').classList.add('show');
+  $('#snapToggle').checked = state.snapEnabled;
+  // Hide the main polygon stroke during edit (we'll re-render after)
+  buildEditMarkers();
+  toast('Edição ativa · arraste os vértices','info');
+}
+
+function buildEditMarkers(){
+  clearEditMarkers();
+  const p = state.parcels.find(x=>x.id===state.editTargetId);
+  if(!p) return;
+
+  // Editing polyline preview (closed)
+  const path = [...p.coords, p.coords[0]];
+  state.editPolyline = L.polyline(path, {
+    color: p.color, weight: 3, opacity: 0.95, dashArray: '6,3'
+  }).addTo(state.map);
+
+  // Vertex markers (draggable)
+  p.coords.forEach((c, i) => {
+    const m = L.marker(c, {
+      draggable: true,
+      icon: L.divIcon({ className:'edit-vertex', iconSize:[18,18] }),
+      keyboard: false,
+      zIndexOffset: 1000,
+    }).addTo(state.map);
+    m.bindTooltip('V'+(i+1), {direction:'top', offset:[0,-8]});
+
+    m.on('drag', (ev) => onVertexDrag(i, ev));
+    m.on('dragend', (ev) => onVertexDragEnd(i, ev));
+    m.on('contextmenu', () => removeVertex(i));
+    // Double-click to remove on desktop
+    m.on('dblclick', (e) => { L.DomEvent.stopPropagation(e); removeVertex(i); });
+
+    state.editVertexMarkers.push(m);
+  });
+
+  buildMidpointMarkers();
+}
+
+function buildMidpointMarkers(){
+  // Clear existing midpoints only
+  state.editMidpointMarkers.forEach(m => state.map.removeLayer(m));
+  state.editMidpointMarkers = [];
+
+  const p = state.parcels.find(x=>x.id===state.editTargetId);
+  if(!p) return;
+
+  for(let i=0; i<p.coords.length; i++){
+    const a = p.coords[i];
+    const b = p.coords[(i+1)%p.coords.length];
+    const mid = [(a[0]+b[0])/2, (a[1]+b[1])/2];
+    const insertAt = i+1;
+    const m = L.marker(mid, {
+      icon: L.divIcon({ className:'edit-vertex midpoint', iconSize:[14,14] }),
+      zIndexOffset: 500,
+    }).addTo(state.map);
+    m.bindTooltip('Toque para inserir vértice', {direction:'top', offset:[0,-6]});
+    m.on('click', () => insertVertexAt(insertAt, mid));
+    state.editMidpointMarkers.push(m);
+  }
+}
+
+function clearEditMarkers(){
+  state.editVertexMarkers.forEach(m => state.map.removeLayer(m));
+  state.editVertexMarkers = [];
+  state.editMidpointMarkers.forEach(m => state.map.removeLayer(m));
+  state.editMidpointMarkers = [];
+  if(state.editPolyline){ state.map.removeLayer(state.editPolyline); state.editPolyline = null; }
+  hideSnapHint();
+}
+
+function showSnapHint(latlng){
+  if(state.snapHintMarker){ state.map.removeLayer(state.snapHintMarker); }
+  state.snapHintMarker = L.marker(latlng, {
+    icon: L.divIcon({ className:'snap-target', iconSize:[22,22] }),
+    interactive:false,
+    zIndexOffset: 1200,
+  }).addTo(state.map);
+}
+function hideSnapHint(){
+  if(state.snapHintMarker){ state.map.removeLayer(state.snapHintMarker); state.snapHintMarker = null; }
+}
+
+function onVertexDrag(idx, ev){
+  const p = state.parcels.find(x=>x.id===state.editTargetId);
+  if(!p) return;
+  const ll = ev.target.getLatLng();
+  let newPos = [ll.lat, ll.lng];
+
+  // Snap check (live)
+  const snap = findSnapTarget(newPos, p.id);
+  if(snap){
+    newPos = snap.latlng;
+    ev.target.setLatLng(newPos);
+    showSnapHint(newPos);
+  } else {
+    hideSnapHint();
+  }
+
+  // Update polygon preview
+  p.coords[idx] = newPos;
+  if(state.editPolyline){
+    const path = [...p.coords, p.coords[0]];
+    state.editPolyline.setLatLngs(path);
+  }
+}
+
+function onVertexDragEnd(idx, ev){
+  const p = state.parcels.find(x=>x.id===state.editTargetId);
+  if(!p) return;
+
+  // Final position (may have been snapped during drag)
+  const ll = ev.target.getLatLng();
+  let newPos = [ll.lat, ll.lng];
+  const snap = findSnapTarget(newPos, p.id);
+  if(snap){ newPos = snap.latlng; ev.target.setLatLng(newPos); }
+
+  const previous = p.coords[idx];
+  p.coords[idx] = newPos;
+
+  // Topology check
+  if(!ringIsSimple(p.coords)){
+    p.coords[idx] = previous;
+    ev.target.setLatLng(previous);
+    if(state.editPolyline){
+      state.editPolyline.setLatLngs([...p.coords, p.coords[0]]);
+    }
+    toast('Movimento inválido: causaria auto-interseção','error');
+    hideSnapHint();
+    return;
+  }
+
+  // Propagate the move to neighbouring parcels that shared the OLD vertex
+  // (this preserves topological integrity between adjacent parcels)
+  let propagated = 0;
+  state.parcels.forEach(other => {
+    if(other.id === p.id) return;
+    other.coords.forEach((v, vi) => {
+      if(Math.abs(v[0]-previous[0]) < 1e-9 && Math.abs(v[1]-previous[1]) < 1e-9){
+        const backup = [...other.coords];
+        other.coords[vi] = [newPos[0], newPos[1]];
+        if(!ringIsSimple(other.coords)){
+          other.coords = backup;
+        } else {
+          propagated++;
+        }
+      }
+    });
+  });
+
+  hideSnapHint();
+  // Re-render midpoints (they depend on vertex positions)
+  buildMidpointMarkers();
+  // Refresh layers for other parcels and selected (excluding edit polyline)
+  renderParcelLayersExceptEditing();
+  saveProject();
+  if(propagated){
+    toast(`Snap aplicado — ${propagated} parcela${propagated>1?'s':''} vizinha${propagated>1?'s':''} ajustada${propagated>1?'s':''}`,'success',2200);
+  } else if(snap){
+    toast('Snap aplicado','success',1500);
+  }
+}
+
+function insertVertexAt(idx, latlng){
+  const p = state.parcels.find(x=>x.id===state.editTargetId);
+  if(!p) return;
+
+  // Allow snap on inserted vertex
+  let pos = latlng;
+  const snap = findSnapTarget(pos, p.id);
+  if(snap) pos = snap.latlng;
+
+  const newCoords = [...p.coords];
+  newCoords.splice(idx, 0, pos);
+  if(!ringIsSimple(newCoords)){
+    toast('Inserção causaria auto-interseção','error');
+    return;
+  }
+  p.coords = newCoords;
+  buildEditMarkers();
+  renderParcelLayersExceptEditing();
+  saveProject();
+  toast('Vértice inserido','success',1400);
+}
+
+function removeVertex(idx){
+  const p = state.parcels.find(x=>x.id===state.editTargetId);
+  if(!p) return;
+  if(p.coords.length <= 3){
+    toast('Mínimo de 3 vértices','error');
+    return;
+  }
+  const newCoords = [...p.coords];
+  newCoords.splice(idx, 1);
+  if(!ringIsSimple(newCoords)){
+    toast('Remoção causaria auto-interseção','error');
+    return;
+  }
+  p.coords = newCoords;
+  buildEditMarkers();
+  renderParcelLayersExceptEditing();
+  saveProject();
+  toast('Vértice removido','info',1400);
+}
+
+// During edit, we don't want to redraw the selected polygon's main layer
+// because the editPolyline is taking its place. So skip it.
+function renderParcelLayersExceptEditing(){
+  // Remove all existing parcel layers
+  state.parcelLayers.forEach(obj=>{
+    if(obj.polygon) state.map.removeLayer(obj.polygon);
+    if(obj.label) state.map.removeLayer(obj.label);
+    obj.vertexMarkers.forEach(m=>state.map.removeLayer(m));
+  });
+  state.parcelLayers.clear();
+
+  state.parcels.forEach(p => {
+    if(state.isEditing && p.id === state.editTargetId){
+      // Add label only (not polygon, to keep edit polyline visible)
+      const c = calcCentroid(p.coords);
+      const label = L.marker(c, {
+        icon: L.divIcon({
+          className:'parcel-label',
+          html:`<div style="background:rgba(15,20,17,.85);color:${p.color};border:1px solid ${p.color};padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.5px;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.8)">${escapeHTML(p.name)}</div>`,
+          iconSize:[80,18], iconAnchor:[40,9],
+        }),
+        interactive:false,
+      }).addTo(state.map);
+      state.parcelLayers.set(p.id, { polygon:null, label, vertexMarkers:[] });
+    } else {
+      renderOneParcel(p);
+    }
+  });
+  $('#ovParcels').textContent = state.parcels.length;
+}
+
+function finishEdit(){
+  if(!state.isEditing) return;
+  state.isEditing = false;
+  state.editTargetId = null;
+  clearEditMarkers();
+  $('#editBanner').classList.remove('show');
+  renderParcelLayers();
+  renderParcelList();
+  if(state.selectedId) populateDetails(state.selectedId);
+  saveProject();
+  toast('Edição concluída','success');
+}
+
+
+function startSplit(parcelId){
+  if(state.isEditing) finishEdit();
+  state.isPickingForSplit=true;
+  state.splitTargetId=parcelId;
+  state.splitCoords=[];
+  state.splitMarkers.forEach(m=>state.map.removeLayer(m));
+  state.splitMarkers=[];
+  if(state.splitPolyline){state.map.removeLayer(state.splitPolyline);state.splitPolyline=null}
+  closeAllSheets();
+  $('#splitBanner').classList.add('show');
+  toast('Toque para definir 2 pontos da linha de divisão','info',3500);
+}
+function addSplitVertex(latlng){
+  state.splitCoords.push(latlng);
+  const m=L.circleMarker(latlng,{radius:7,color:'#ffb347',weight:2,fillColor:'#0a0d0c',fillOpacity:1}).addTo(state.map);
+  state.splitMarkers.push(m);
+  if(state.splitCoords.length===2){
+    state.splitPolyline=L.polyline(state.splitCoords,{color:'#ffb347',weight:3,dashArray:'6,4'}).addTo(state.map);
+    performSplit();
+  }
+}
+function performSplit(){
+  const p=state.parcels.find(x=>x.id===state.splitTargetId);
+  if(!p){cancelSplit();return}
+  try{
+    // extend line beyond polygon
+    const [a,b]=state.splitCoords;
+    const dLat=b[0]-a[0], dLng=b[1]-a[1];
+    const extA=[a[0]-dLat*5,a[1]-dLng*5];
+    const extB=[b[0]+dLat*5,b[1]+dLng*5];
+    const line=turf.lineString([[extA[1],extA[0]],[extB[1],extB[0]]]);
+    const ring=[...p.coords.map(c=>[c[1],c[0]]),[p.coords[0][1],p.coords[0][0]]];
+    const poly=turf.polygon([ring]);
+    const split=turf.lineSplit(turf.polygonToLine(poly),line);
+    if(!split || split.features.length<2){
+      toast('A linha não cruzou a parcela','error');
+      cancelSplit();return;
+    }
+    // Use polygon-clipping approach: buffer the line and difference
+    const buffered=turf.buffer(line,0.0005,{units:'kilometers'});
+    const diff=turf.difference(poly,buffered);
+    let pieces=[];
+    if(!diff){toast('Falha ao subdividir','error');cancelSplit();return}
+    if(diff.geometry.type==='Polygon') pieces=[diff.geometry.coordinates];
+    else if(diff.geometry.type==='MultiPolygon') pieces=diff.geometry.coordinates;
+    if(pieces.length<2){toast('Linha não dividiu a parcela em duas partes. Tente uma linha mais ampla.','error');cancelSplit();return}
+
+    // Keep up to two largest pieces
+    const sorted=pieces.map(r=>({coords:r[0],area:turf.area(turf.polygon(r))})).sort((a,b)=>b.area-a.area);
+    const newPieces=sorted.slice(0,Math.max(2,sorted.length));
+
+    // Remove original
+    state.parcels=state.parcels.filter(x=>x.id!==p.id);
+
+    const baseNum=nextParcelNumber();
+    newPieces.forEach((piece,i)=>{
+      const coords=piece.coords.slice(0,-1).map(c=>[c[1],c[0]]);
+      state.parcels.push({
+        id:uid(),
+        name:(p.name||'Parcela')+' / '+String.fromCharCode(65+i),
+        desc:p.desc||'',
+        color:PALETTE[(state.parcels.length)%PALETTE.length],
+        coords,
+        createdAt:Date.now(),
+      });
+    });
+
+    cancelSplit();
+    renderParcelLayers();
+    renderParcelList();
+    saveProject();
+    toast(`Parcela subdividida em ${newPieces.length} partes`,'success');
+  }catch(e){
+    console.error(e);
+    toast('Erro na subdivisão: '+e.message,'error');
+    cancelSplit();
+  }
+}
+function cancelSplit(){
+  state.isPickingForSplit=false;
+  state.splitTargetId=null;
+  state.splitCoords=[];
+  state.splitMarkers.forEach(m=>state.map.removeLayer(m));
+  state.splitMarkers=[];
+  if(state.splitPolyline){state.map.removeLayer(state.splitPolyline);state.splitPolyline=null}
+  $('#splitBanner').classList.remove('show');
+}
+
+/* Grid subdivision NxM */
+function gridSplit(parcelId){
+  const p=state.parcels.find(x=>x.id===parcelId);
+  if(!p){toast('Parcela não encontrada','error');return}
+  const rows=parseInt(prompt('Número de linhas (subdivisões horizontais):','2'));
+  if(isNaN(rows)||rows<1)return;
+  const cols=parseInt(prompt('Número de colunas (subdivisões verticais):','2'));
+  if(isNaN(cols)||cols<1)return;
+  if(rows*cols>200){toast('Máximo 200 parcelas','error');return}
+
+  try{
+    const ring=[...p.coords.map(c=>[c[1],c[0]]),[p.coords[0][1],p.coords[0][0]]];
+    const poly=turf.polygon(ring);
+    const bbox=turf.bbox(poly);
+    const [minX,minY,maxX,maxY]=bbox;
+    const dx=(maxX-minX)/cols, dy=(maxY-minY)/rows;
+
+    const newParcels=[];
+    let idx=1;
+    for(let r=0;r<rows;r++){
+      for(let c=0;c<cols;c++){
+        const cellRing=[
+          [minX+c*dx,minY+r*dy],
+          [minX+(c+1)*dx,minY+r*dy],
+          [minX+(c+1)*dx,minY+(r+1)*dy],
+          [minX+c*dx,minY+(r+1)*dy],
+          [minX+c*dx,minY+r*dy],
+        ];
+        const cell=turf.polygon([cellRing]);
+        let intersection=null;
+        try{intersection=turf.intersect(poly,cell)}catch(e){intersection=null}
+        if(!intersection) continue;
+        const geoms=intersection.geometry.type==='Polygon'?[intersection.geometry.coordinates]:intersection.geometry.coordinates;
+        geoms.forEach(g=>{
+          const coords=g[0].slice(0,-1).map(c=>[c[1],c[0]]);
+          if(coords.length>=3){
+            newParcels.push({
+              id:uid(),
+              name:(p.name||'Parcela')+' '+String(idx).padStart(2,'0'),
+              desc:p.desc||'',
+              color:PALETTE[(state.parcels.length+newParcels.length)%PALETTE.length],
+              coords,
+              createdAt:Date.now(),
+            });
+            idx++;
+          }
+        });
+      }
+    }
+    if(!newParcels.length){toast('Falha ao gerar grade','error');return}
+
+    state.parcels=state.parcels.filter(x=>x.id!==p.id);
+    state.parcels.push(...newParcels);
+    renderParcelLayers();
+    renderParcelList();
+    saveProject();
+    toast(`${newParcels.length} parcelas geradas em grade`,'success');
+    closeAllSheets();
+  }catch(e){
+    console.error(e);
+    toast('Erro: '+e.message,'error');
+  }
+}
+
+/* ============ PDF report ============ */
+async function generatePDF(specificParcel=null){
+  if(!state.parcels.length && !specificParcel){toast('Sem parcelas para o relatório','error');return}
+  const { jsPDF }=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const list=specificParcel?[specificParcel]:state.parcels;
+
+  // Header
+  doc.setFillColor(15,20,17);
+  doc.rect(0,0,210,28,'F');
+  doc.setTextColor(201,245,61);
+  doc.setFont('helvetica','bold');doc.setFontSize(16);
+  doc.text('GeoParcel',14,14);
+  doc.setTextColor(170,181,173);
+  doc.setFont('helvetica','normal');doc.setFontSize(8);
+  doc.text('RELATÓRIO DE LEVANTAMENTO TERRITORIAL',14,20);
+  doc.setFontSize(7);
+  doc.text(new Date().toLocaleString('pt-BR'),196,14,{align:'right'});
+  doc.text('Datum: WGS84 / SIRGAS 2000',196,20,{align:'right'});
+
+  doc.setTextColor(0,0,0);
+  doc.setFontSize(13);doc.setFont('helvetica','bold');
+  doc.text(state.projectName,14,38);
+
+  let y=46;
+  doc.setFontSize(9);doc.setFont('helvetica','normal');
+  let totalArea=0,totalPerim=0;
+  list.forEach(p=>{totalArea+=calcArea(p.coords);totalPerim+=calcPerimeter(p.coords)});
+  const af=fmtArea(totalArea);
+  doc.text(`Total: ${list.length} parcela(s)`,14,y);y+=5;
+  doc.text(`Área total: ${af.val} ${af.unit}`,14,y);y+=5;
+  doc.text(`Perímetro total: ${totalPerim.toFixed(2)} m`,14,y);y+=8;
+
+  list.forEach((p,idx)=>{
+    if(y>250){doc.addPage();y=20}
+    // Parcel header
+    doc.setFillColor(240,242,240);
+    doc.rect(14,y,182,7,'F');
+    doc.setFontSize(10);doc.setFont('helvetica','bold');
+    doc.setTextColor(15,20,17);
+    doc.text(`${idx+1}. ${p.name}`,16,y+5);
+    y+=10;
+
+    const area=calcArea(p.coords);
+    const perim=calcPerimeter(p.coords);
+    const aaf=fmtArea(area);
+    const cen=calcCentroid(p.coords);
+
+    doc.setFontSize(9);doc.setFont('helvetica','normal');
+    doc.text(`Identificador: ${p.id.slice(0,10).toUpperCase()}`,16,y);y+=4;
+    doc.text(`Área: ${aaf.val} ${aaf.unit}    Perímetro: ${perim.toFixed(2)} m    Vértices: ${p.coords.length}`,16,y);y+=4;
+    doc.text(`Centróide: ${fmtCoord(cen[0])}, ${fmtCoord(cen[1])}`,16,y);y+=4;
+    if(p.desc){
+      const lines=doc.splitTextToSize('Descrição: '+p.desc,180);
+      doc.text(lines,16,y);y+=lines.length*4;
+    }
+    y+=2;
+
+    // Vertices table header
+    doc.setFont('helvetica','bold');doc.setFontSize(8);
+    doc.setFillColor(220,224,221);
+    doc.rect(14,y,182,5,'F');
+    doc.text('Vértice',18,y+3.5);
+    doc.text('Latitude',55,y+3.5);
+    doc.text('Longitude',105,y+3.5);
+    doc.text('Distância p/ próximo',150,y+3.5);
+    y+=5;
+    doc.setFont('helvetica','normal');
+    p.coords.forEach((c,i)=>{
+      if(y>285){doc.addPage();y=20}
+      const next=p.coords[(i+1)%p.coords.length];
+      const d=turf.distance(turf.point([c[1],c[0]]),turf.point([next[1],next[0]]),{units:'meters'});
+      doc.text('V'+(i+1),18,y+3.5);
+      doc.text(fmtCoord(c[0],7),55,y+3.5);
+      doc.text(fmtCoord(c[1],7),105,y+3.5);
+      doc.text(d.toFixed(2)+' m',150,y+3.5);
+      y+=4.5;
+    });
+    y+=6;
+  });
+
+  // Footer on each page
+  const pages=doc.getNumberOfPages();
+  for(let i=1;i<=pages;i++){
+    doc.setPage(i);
+    doc.setFontSize(7);doc.setTextColor(120,120,120);
+    doc.text(`GeoParcel · ${state.projectName}`,14,290);
+    doc.text(`Página ${i} de ${pages}`,196,290,{align:'right'});
+  }
+  const fname=specificParcel ? (specificParcel.name||'parcela')+'_relatorio.pdf' : (state.projectName||'projeto')+'_relatorio.pdf';
+  doc.save(fname.replace(/\s+/g,'_'));
+  toast('Relatório PDF gerado','success');
+}
+
+/* ============ Sheets ============ */
+function openSheet(id){
+  if(id==='sheetParcels') renderParcelList();
+  $('#sheetBackdrop').classList.add('open');
+  $('#'+id).classList.add('open');
+}
+function closeAllSheets(){
+  $('#sheetBackdrop').classList.remove('open');
+  $$('.sheet').forEach(s=>s.classList.remove('open'));
+}
+
+/* ============ Event wiring ============ */
+function wire(){
+  $('#fabDraw').addEventListener('click',()=>{
+    if(state.isDrawing) stopDraw(); else startDraw();
+  });
+  $('#fabFinish').addEventListener('click',finishDraw);
+  $('#fabUndo').addEventListener('click',undoVertex);
+  $('#fabGPS').addEventListener('click',addGPSVertex);
+  $('#fabManual').addEventListener('click',()=>openSheet('sheetManual'));
+  $('#fabParcels').addEventListener('click',()=>openSheet('sheetParcels'));
+  $('#fabLocate').addEventListener('click',locate);
+  $('#fabMore').addEventListener('click',()=>openSheet('sheetMore'));
+  $('#btnHelp').addEventListener('click',()=>openSheet('sheetHelp'));
+
+  $('#sheetBackdrop').addEventListener('click',closeAllSheets);
+  $$('[data-close-sheet]').forEach(b=>b.addEventListener('click',closeAllSheets));
+
+  // Layer switcher
+  $$('.layer-btn').forEach(b=>b.addEventListener('click',()=>setBaseLayer(b.dataset.layer)));
+
+  // Tabs
+  $$('.tab').forEach(t=>{
+    t.addEventListener('click',()=>{
+      const parent=t.closest('.sheet-body');
+      parent.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+      parent.querySelectorAll('.tab-pane').forEach(x=>x.classList.remove('active'));
+      t.classList.add('active');
+      parent.querySelector('#tab-'+t.dataset.tab).classList.add('active');
+    });
+  });
+
+  // Manual coord format switch
+  $('#coordFormat').addEventListener('change',e=>{
+    const v=e.target.value;
+    $('#formatDD').style.display=v==='dd'?'block':'none';
+    $('#formatDMS').style.display=v==='dms'?'block':'none';
+    $('#formatUTM').style.display=v==='utm'?'block':'none';
+  });
+
+  $('#btnAddManualPoint').addEventListener('click',()=>{
+    const ll=getManualLatLng();
+    if(!ll){toast('Coordenada inválida','error');return}
+    if(!state.isDrawing) startDraw();
+    addVertex(ll);
+    state.map.setView(ll,Math.max(state.map.getZoom(),17));
+    closeAllSheets();
+    toast('Vértice adicionado','success');
+  });
+  $('#btnUseCrosshair').addEventListener('click',()=>{
+    const c=state.map.getCenter();
+    if(!state.isDrawing) startDraw();
+    addVertex([c.lat,c.lng]);
+    closeAllSheets();
+    toast('Vértice no centro do mapa','success');
+  });
+
+  // Save details
+  $('#btnSaveDetails').addEventListener('click',()=>{
+    const p=state.parcels.find(x=>x.id===state.selectedId);
+    if(!p)return;
+    p.name=$('#editName').value||p.name;
+    p.desc=$('#editDesc').value;
+    p.color=$('#colorGrid').dataset.selected||p.color;
+    renderParcelLayers();
+    renderParcelList();
+    saveProject();
+    toast('Salvo','success');
+  });
+  $('#btnDelete').addEventListener('click',()=>{
+    if(!state.selectedId)return;
+    if(!confirm('Excluir esta parcela?'))return;
+    deleteParcel(state.selectedId);
+    closeAllSheets();
+  });
+  $('#btnCenterParcel').addEventListener('click',()=>{
+    if(state.selectedId){centerOnParcel(state.selectedId)}
+  });
+  $('#btnReport').addEventListener('click',()=>{
+    const p=state.parcels.find(x=>x.id===state.selectedId);
+    if(p) generatePDF(p);
+  });
+  $('#btnSplit').addEventListener('click',()=>startSplit(state.selectedId));
+  $('#btnGrid').addEventListener('click',()=>gridSplit(state.selectedId));
+
+  // Edit polygon
+  $('#btnEditPoly').addEventListener('click',()=>{
+    if(state.selectedId) startEditParcel(state.selectedId);
+  });
+  $('#editDone').addEventListener('click', finishEdit);
+  $('#snapToggle').addEventListener('change', e => { state.snapEnabled = e.target.checked });
+
+  // Export buttons inside details
+  $$('[data-export]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const p=state.parcels.find(x=>x.id===state.selectedId);
+      if(p) exportParcel(p,b.dataset.export);
+    });
+  });
+  $$('[data-export-all]').forEach(b=>{
+    b.addEventListener('click',()=>exportAll(b.dataset.exportAll));
+  });
+
+  // Project
+  $('#projectName').addEventListener('input',e=>{state.projectName=e.target.value;saveProject()});
+  $('#areaUnit').addEventListener('change',e=>{state.areaUnit=e.target.value;renderParcelLayers();renderParcelList();if(state.selectedId)populateDetails(state.selectedId);saveProject()});
+  $('#btnNewProject').addEventListener('click',()=>{
+    if(state.parcels.length && !confirm('Iniciar novo projeto? Os dados atuais permanecem salvos se você exportar.'))return;
+    state.parcels=[];state.selectedId=null;state.projectName='Projeto sem título';
+    $('#projectName').value=state.projectName;
+    renderParcelLayers();renderParcelList();saveProject();
+    closeAllSheets();
+  });
+  $('#btnSaveProject').addEventListener('click',exportProjectFile);
+  $('#btnSaveAll').addEventListener('click',exportProjectFile);
+  $('#btnLoadAll').addEventListener('click',()=>$('#fileLoadProject').click());
+  $('#fileLoadProject').addEventListener('change',async e=>{
+    const f=e.target.files[0];if(!f)return;
+    try{
+      const text=await f.text();
+      const data=JSON.parse(text);
+      state.projectName=data.name||'Importado';
+      state.parcels=data.parcels||[];
+      state.areaUnit=data.areaUnit||'auto';
+      $('#projectName').value=state.projectName;
+      $('#areaUnit').value=state.areaUnit;
+      renderParcelLayers();renderParcelList();
+      saveProject();fitAllParcels();
+      toast('Projeto carregado','success');
+      closeAllSheets();
+    }catch(err){toast('Erro: '+err.message,'error')}
+    e.target.value='';
+  });
+  $('#btnClearAll').addEventListener('click',()=>{
+    if(!confirm('Limpar TODAS as parcelas? Esta ação não pode ser desfeita.'))return;
+    state.parcels=[];state.selectedId=null;
+    renderParcelLayers();renderParcelList();saveProject();
+    toast('Tudo limpo','info');
+    closeAllSheets();
+  });
+  $('#btnReportAll').addEventListener('click',()=>generatePDF(null));
+
+  // Imports
+  $('#btnImportKML').addEventListener('click',()=>{$('#fileImport').setAttribute('accept','.kml');$('#fileImport').click()});
+  $('#btnImportGeoJSON').addEventListener('click',()=>{$('#fileImport').setAttribute('accept','.geojson,.json');$('#fileImport').click()});
+  $('#btnImportCSV').addEventListener('click',()=>{$('#fileImport').setAttribute('accept','.csv,.txt');$('#fileImport').click()});
+  $('#fileImport').addEventListener('change',async e=>{
+    const f=e.target.files[0];if(!f)return;
+    await handleFileImport(f);
+    closeAllSheets();
+    e.target.value='';
+  });
+
+  // Long press on draw FAB to cancel
+  let pressTimer;
+  $('#fabDraw').addEventListener('touchstart',()=>{
+    pressTimer=setTimeout(()=>{if(state.isDrawing){stopDraw();toast('Desenho cancelado','info')}},800);
+  });
+  $('#fabDraw').addEventListener('touchend',()=>clearTimeout(pressTimer));
+}
+
+/* ============ Boot ============ */
+window.addEventListener('load',()=>{
+  initMap();
+  wire();
+  loadProject();
+  startGPS();
+  updateMouseInfo({latlng:state.map.getCenter()});
+  setTimeout(()=>state.map.invalidateSize(),300);
+});
+window.addEventListener('resize',()=>state.map && state.map.invalidateSize());
+
+</script>
+</body>
+</html>
